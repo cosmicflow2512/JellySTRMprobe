@@ -11,7 +11,7 @@
                 "version": "1.4.0.0",
                 "changelog": "- Catch-up mode now also reprobes newly added STRM items that already have media streams but a missing duration (RunTimeTicks null/0), matching the scheduled task's selection.\n- Scheduled task also reprobes existing STRM items missing a duration.",
                 "targetAbi": "10.11.0.0",
-                "sourceUrl": "https://raw.githubusercontent.com/cosmicflow2512/JellySTRMprobe/claude/jellystrmprobe-runtimeticks-vn8m4l/dist/JellySTRMprobe_1.4.0.0.zip",
+                "sourceUrl": "https://raw.githubusercontent.com/cosmicflow2512/JellySTRMprobe/master/dist/JellySTRMprobe_1.4.0.0.zip",
                 "checksum": "332901c11d93e233b3441bab4d21a6f3",
                 "timestamp": "2026-07-02T15:48:10.0000000Z"
             }

@@ -50,7 +50,7 @@ All settings are accessible from Dashboard > Plugins > JellySTRMprobe:
 1. In Jellyfin, go to **Dashboard > Plugins > Repositories**
 2. Click **+** and add this repository URL:
    ```
-   https://raw.githubusercontent.com/cosmicflow2512/JellySTRMprobe/claude/jellystrmprobe-runtimeticks-vn8m4l/manifest.json
+   https://raw.githubusercontent.com/cosmicflow2512/JellySTRMprobe/master/manifest.json
    ```
 3. Go to **Catalog**, find **JellySTRMprobe**, and install
 4. Restart Jellyfin
@@ -59,10 +59,9 @@ Updates then arrive automatically through the catalog — bump the version, rebu
 the release ZIP, and add a new entry to `manifest.json` (see
 [Publishing a new version](#publishing-a-new-version)).
 
-> **Note:** The manifest is served straight from this branch via
-> `raw.githubusercontent.com`. Once this branch is merged, update the URL above
-> (and the `sourceUrl` in `manifest.json`) to point at the branch the manifest
-> lives on (e.g. `master`).
+> **Note:** The manifest and release archives are served straight from the
+> `master` branch via `raw.githubusercontent.com` — the raw URL always includes
+> the branch segment (`.../<repo>/master/...`), there is no branch-less form.
 
 ### Manual Installation
 
