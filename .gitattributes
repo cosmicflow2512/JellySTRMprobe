@@ -1,0 +1,4 @@
+# Plugin release archives are binary — never apply text/EOL normalization,
+# otherwise the committed bytes (and thus the MD5 in manifest.json) would change.
+*.zip binary
+dist/** binary
