@@ -86,9 +86,17 @@ public class ProbeService : IProbeService
 
             totalResolved++;
 
+            // An item needs (re)probing when it is a STRM file AND either has no
+            // media streams at all, OR is missing a usable duration. Jellyfin can
+            // persist MediaStreams (video/audio/subtitle) for a STRM item while
+            // leaving RunTimeTicks null/0 — those items still lack duration, so the
+            // original "no media stream data" check alone skipped them. Jellyfin's
+            // own MediaSourceManager.GetPlaybackMediaSources force-reprobes any
+            // .strm on playback for the same reason; this mirrors that selection.
             if (item.Path != null
                 && item.Path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase)
-                && item.GetMediaStreams().Count == 0)
+                && (item.GetMediaStreams().Count == 0
+                    || item.RunTimeTicks is null or 0))
             {
                 unprobedItems.Add(item);
             }

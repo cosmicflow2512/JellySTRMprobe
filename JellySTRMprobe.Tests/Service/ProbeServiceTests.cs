@@ -9,6 +9,7 @@ using JellySTRMprobe.Service;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -476,6 +477,73 @@ public class ProbeServiceTests
         _mockLibraryManager
             .Setup(l => l.GetItemIds(It.IsAny<InternalItemsQuery>()))
             .Returns(new List<Guid>());
+
+        var result = _probeService.GetUnprobedItems(Array.Empty<Guid>());
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void GetUnprobedItems_SelectsStrmWithStreamsButNoRunTimeTicks()
+    {
+        // Regression: an item can have MediaStreams (video/audio/subtitle) but a
+        // null RunTimeTicks. It must still be selected for reprobing.
+        var streams = new List<MediaStream>
+        {
+            new MediaStream { Type = MediaStreamType.Video },
+            new MediaStream { Type = MediaStreamType.Audio },
+            new MediaStream { Type = MediaStreamType.Subtitle },
+        };
+        var item = TestHelpers.CreateTestItem(
+            "Streamed No Duration",
+            "/media/no-duration.strm",
+            streams,
+            runTimeTicks: null);
+
+        SetupItemIds(item);
+
+        var result = _probeService.GetUnprobedItems(Array.Empty<Guid>());
+
+        result.Should().HaveCount(1);
+        result[0].Name.Should().Be("Streamed No Duration");
+    }
+
+    [Fact]
+    public void GetUnprobedItems_SelectsStrmWithStreamsButZeroRunTimeTicks()
+    {
+        var streams = new List<MediaStream>
+        {
+            new MediaStream { Type = MediaStreamType.Video },
+        };
+        var item = TestHelpers.CreateTestItem(
+            "Zero Duration",
+            "/media/zero-duration.strm",
+            streams,
+            runTimeTicks: 0);
+
+        SetupItemIds(item);
+
+        var result = _probeService.GetUnprobedItems(Array.Empty<Guid>());
+
+        result.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void GetUnprobedItems_SkipsFullyProbedStrmWithStreamsAndRunTimeTicks()
+    {
+        // Fully probed: has streams AND a valid duration → must NOT be reselected.
+        var streams = new List<MediaStream>
+        {
+            new MediaStream { Type = MediaStreamType.Video },
+            new MediaStream { Type = MediaStreamType.Audio },
+        };
+        var item = TestHelpers.CreateTestItem(
+            "Fully Probed",
+            "/media/probed.strm",
+            streams,
+            runTimeTicks: TimeSpan.FromMinutes(42).Ticks);
+
+        SetupItemIds(item);
 
         var result = _probeService.GetUnprobedItems(Array.Empty<Guid>());
 

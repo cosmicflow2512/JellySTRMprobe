@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Entities;
@@ -39,13 +40,23 @@ internal static class TestHelpers
     /// <summary>
     /// Creates a BaseItem mock with properties set directly.
     /// </summary>
-    public static BaseItem CreateTestItem(string name, string? path = null)
+    /// <param name="name">The item name.</param>
+    /// <param name="path">The item path.</param>
+    /// <param name="mediaStreams">The media streams to return from GetMediaStreams (defaults to an empty list).</param>
+    /// <param name="runTimeTicks">The RunTimeTicks value (defaults to null).</param>
+    /// <returns>The mocked item.</returns>
+    public static BaseItem CreateTestItem(
+        string name,
+        string? path = null,
+        IReadOnlyList<MediaStream>? mediaStreams = null,
+        long? runTimeTicks = null)
     {
         var mock = new Mock<BaseItem>() { CallBase = true };
-        mock.Setup(m => m.GetMediaStreams()).Returns(new List<MediaStream>());
+        mock.Setup(m => m.GetMediaStreams()).Returns((mediaStreams ?? new List<MediaStream>()).ToList());
         mock.Object.Name = name;
         mock.Object.Path = path;
         mock.Object.Id = Guid.NewGuid();
+        mock.Object.RunTimeTicks = runTimeTicks;
         return mock.Object;
     }
 }

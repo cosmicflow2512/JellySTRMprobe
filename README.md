@@ -21,7 +21,7 @@ The plugin calls Jellyfin's internal `RefreshSingleItem()` with `EnableRemoteCon
 
 ### Scheduled Task
 A scheduled task (Dashboard > Scheduled Tasks > **Probe STRM Media Info**) that:
-- Finds all STRM items with no media stream data
+- Finds all STRM items with no media stream data **or a missing duration** (see [Fork Changes](#fork-changes))
 - Probes them in parallel with configurable concurrency
 - Runs daily at 4:00 AM by default (customizable)
 - Reports progress and is cancellable from the Dashboard
@@ -84,6 +84,38 @@ dotnet publish JellySTRMprobe -c Release -o ./publish
 | [StrmAssistant](https://github.com/sjtuross/StrmAssistant) | Emby | Emby-only, incompatible with Jellyfin |
 | [JellyfinStrmExtract](https://github.com/gauthier-th/JellyfinStrmExtract) | Jellyfin | Sequential processing, targets Jellyfin 10.9.x |
 
+## Fork Changes
+
+This is a fork of [firestaerter3/JellySTRMprobe](https://github.com/firestaerter3/JellySTRMprobe), maintained by [cosmicflow2512](https://github.com/cosmicflow2512).
+
+### v1.3.0 — Reprobe items with a missing duration
+
+**What changed:** The scheduled task's item-selection query was widened. The
+upstream task selects a STRM item only when it has *no media stream data*
+(`GetMediaStreams().Count == 0`). This fork also selects STRM items that
+**do** have media streams but are missing a usable duration
+(`RunTimeTicks` is `null` or `0`).
+
+**Why:** On real libraries (e.g. STRM files from NzbDAV), Jellyfin can persist
+`MediaStreams` for an item — video, audio, subtitle tracks — while leaving
+`RunTimeTicks` empty. Such items already have stream data, so the upstream
+selection skipped them, and they stayed without a duration indefinitely.
+Empirically, 181 of 618 STRM episodes on one server were affected. Jellyfin's
+own core (`Emby.Server.Implementations/Library/MediaSourceManager.cs`,
+`GetPlaybackMediaSources`) force-reprobes any `.strm` on playback for the same
+reason; this fork mirrors that behaviour for the bulk task. The probe mechanism
+itself (`RefreshSingleItem` with `EnableRemoteContentProbe = true`) is
+unchanged — only the selection criterion was extended.
+
+The change lives in `JellySTRMprobe/Service/ProbeService.cs`
+(`GetUnprobedItems`) and is covered by unit tests in
+`JellySTRMprobe.Tests/Service/ProbeServiceTests.cs`.
+
 ## License
 
 Licensed under the GPL-3.0 License. See [LICENSE](LICENSE) for details.
+
+This fork remains under **GPL-3.0**, consistent with the upstream project.
+Copyright © the JellySTRMprobe contributors and, for the changes in this fork,
+© 2026 cosmicflow2512. Modifications are described under
+[Fork Changes](#fork-changes) above.
