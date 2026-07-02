@@ -371,6 +371,73 @@ public class ProbeServiceTests
     }
 
     // =====================
+    // NeedsProbe Tests
+    // =====================
+
+    [Fact]
+    public void NeedsProbe_NonStrmPath_ReturnsFalse()
+    {
+        var item = TestHelpers.CreateTestItem("MKV Movie", "/media/movie.mkv");
+
+        ProbeService.NeedsProbe(item).Should().BeFalse();
+    }
+
+    [Fact]
+    public void NeedsProbe_NullPath_ReturnsFalse()
+    {
+        var item = TestHelpers.CreateTestItem("No Path");
+
+        ProbeService.NeedsProbe(item).Should().BeFalse();
+    }
+
+    [Fact]
+    public void NeedsProbe_StrmWithoutStreams_ReturnsTrue()
+    {
+        var item = TestHelpers.CreateTestItem("Unprobed", "/media/unprobed.strm");
+
+        ProbeService.NeedsProbe(item).Should().BeTrue();
+    }
+
+    [Fact]
+    public void NeedsProbe_StrmWithStreamsButNullRunTimeTicks_ReturnsTrue()
+    {
+        var streams = new List<MediaStream> { new MediaStream { Type = MediaStreamType.Video } };
+        var item = TestHelpers.CreateTestItem("Half Item", "/media/half.strm", streams, runTimeTicks: null);
+
+        ProbeService.NeedsProbe(item).Should().BeTrue();
+    }
+
+    [Fact]
+    public void NeedsProbe_StrmWithStreamsButZeroRunTimeTicks_ReturnsTrue()
+    {
+        var streams = new List<MediaStream> { new MediaStream { Type = MediaStreamType.Video } };
+        var item = TestHelpers.CreateTestItem("Zero Ticks", "/media/zero.strm", streams, runTimeTicks: 0);
+
+        ProbeService.NeedsProbe(item).Should().BeTrue();
+    }
+
+    [Fact]
+    public void NeedsProbe_StrmWithStreamsAndPositiveRunTimeTicks_ReturnsFalse()
+    {
+        var streams = new List<MediaStream> { new MediaStream { Type = MediaStreamType.Video } };
+        var item = TestHelpers.CreateTestItem(
+            "Converged",
+            "/media/converged.strm",
+            streams,
+            runTimeTicks: TimeSpan.FromMinutes(42).Ticks);
+
+        ProbeService.NeedsProbe(item).Should().BeFalse();
+    }
+
+    [Fact]
+    public void NeedsProbe_UppercaseStrmExtension_ReturnsTrue()
+    {
+        var item = TestHelpers.CreateTestItem("Upper", "/media/movie.STRM");
+
+        ProbeService.NeedsProbe(item).Should().BeTrue();
+    }
+
+    // =====================
     // GetUnprobedItems Tests
     // =====================
 

@@ -124,15 +124,8 @@ public class CatchUpEntryPoint : IHostedService, IDisposable
             return;
         }
 
-        // Filter out items that are already fully probed. Mirrors
-        // ProbeService.GetUnprobedItems: an item still needs probing when it has no
-        // media streams OR is missing a usable duration (RunTimeTicks null/0).
-        // Jellyfin can persist streams for a STRM item while leaving the duration
-        // empty, so the stream-count check alone would skip those half-items.
-        var unprobed = items
-            .Where(item => item.GetMediaStreams().Count == 0
-                || item.RunTimeTicks is null or 0)
-            .ToList();
+        // Mirrors ProbeService.NeedsProbe.
+        var unprobed = items.Where(ProbeService.NeedsProbe).ToList();
 
         if (unprobed.Count == 0)
         {

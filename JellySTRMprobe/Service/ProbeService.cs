@@ -48,6 +48,24 @@ public class ProbeService : IProbeService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Determines whether a STRM item still needs (re)probing: a .strm file that
+    /// either has no media streams at all, or is missing a usable duration
+    /// (RunTimeTicks null/0). Jellyfin can persist MediaStreams for a STRM item while
+    /// leaving RunTimeTicks null/0, so the stream-count check alone would skip those
+    /// half-items. Mirrors MediaSourceManager.GetPlaybackMediaSources, which
+    /// force-reprobes any .strm on playback for the same reason.
+    /// </summary>
+    /// <param name="item">The item to evaluate.</param>
+    /// <returns><c>true</c> if the item still needs probing; otherwise <c>false</c>.</returns>
+    public static bool NeedsProbe(BaseItem item)
+    {
+        return item.Path != null
+            && item.Path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase)
+            && (item.GetMediaStreams().Count == 0
+                || item.RunTimeTicks is null or 0);
+    }
+
     /// <inheritdoc />
     public IReadOnlyList<BaseItem> GetUnprobedItems(Guid[] selectedLibraryIds)
     {
@@ -86,17 +104,7 @@ public class ProbeService : IProbeService
 
             totalResolved++;
 
-            // An item needs (re)probing when it is a STRM file AND either has no
-            // media streams at all, OR is missing a usable duration. Jellyfin can
-            // persist MediaStreams (video/audio/subtitle) for a STRM item while
-            // leaving RunTimeTicks null/0 — those items still lack duration, so the
-            // original "no media stream data" check alone skipped them. Jellyfin's
-            // own MediaSourceManager.GetPlaybackMediaSources force-reprobes any
-            // .strm on playback for the same reason; this mirrors that selection.
-            if (item.Path != null
-                && item.Path.EndsWith(".strm", StringComparison.OrdinalIgnoreCase)
-                && (item.GetMediaStreams().Count == 0
-                    || item.RunTimeTicks is null or 0))
+            if (NeedsProbe(item))
             {
                 unprobedItems.Add(item);
             }
