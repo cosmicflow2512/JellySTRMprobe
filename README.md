@@ -88,6 +88,23 @@ dotnet publish JellySTRMprobe -c Release -o ./publish
 
 This is a fork of [firestaerter3/JellySTRMprobe](https://github.com/firestaerter3/JellySTRMprobe), maintained by [cosmicflow2512](https://github.com/cosmicflow2512).
 
+### v1.4.0 — Catch-up mode reprobes half-items too
+
+**What changed:** Catch-up mode (the `ItemAdded` auto-probe) applied the same
+"missing duration" logic from v1.3.0. Previously it queued newly added STRM
+items but then filtered them with `GetMediaStreams().Count == 0`, so an item
+added with streams already present but no duration (`RunTimeTicks` null/0) was
+dropped. That filter now also keeps items missing a usable duration, matching
+the scheduled task's selection.
+
+**Why:** Consistency — the same half-item that the scheduled task now reprobes
+should also be caught the moment it is added, without waiting for the next
+daily run. The `ItemAdded` subscription, 30-second debounce, and probe path
+(`RefreshSingleItem` with `EnableRemoteContentProbe = true`) are unchanged; only
+the post-debounce filter was widened. The change lives in
+`JellySTRMprobe/EntryPoint/CatchUpEntryPoint.cs` (`ProcessQueueAsync`) and is
+covered by tests in `JellySTRMprobe.Tests/EntryPoint/CatchUpEntryPointTests.cs`.
+
 ### v1.3.0 — Reprobe items with a missing duration
 
 **What changed:** The scheduled task's item-selection query was widened. The

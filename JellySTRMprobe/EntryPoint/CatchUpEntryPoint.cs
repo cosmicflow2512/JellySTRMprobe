@@ -17,8 +17,6 @@ namespace JellySTRMprobe.EntryPoint;
 /// </summary>
 public class CatchUpEntryPoint : IHostedService, IDisposable
 {
-    private static readonly TimeSpan DebounceDelay = TimeSpan.FromSeconds(30);
-
     private readonly ILibraryManager _libraryManager;
     private readonly IProbeService _probeService;
     private readonly ILogger<CatchUpEntryPoint> _logger;
@@ -43,6 +41,13 @@ public class CatchUpEntryPoint : IHostedService, IDisposable
         _probeService = probeService;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Gets or sets the debounce window used to batch bursts of ItemAdded events
+    /// during a mass import. Exposed internally so tests can shorten it; production
+    /// keeps the 30-second default.
+    /// </summary>
+    internal TimeSpan DebounceDelay { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)
@@ -119,9 +124,14 @@ public class CatchUpEntryPoint : IHostedService, IDisposable
             return;
         }
 
-        // Filter out items that already have media streams
+        // Filter out items that are already fully probed. Mirrors
+        // ProbeService.GetUnprobedItems: an item still needs probing when it has no
+        // media streams OR is missing a usable duration (RunTimeTicks null/0).
+        // Jellyfin can persist streams for a STRM item while leaving the duration
+        // empty, so the stream-count check alone would skip those half-items.
         var unprobed = items
-            .Where(item => item.GetMediaStreams().Count == 0)
+            .Where(item => item.GetMediaStreams().Count == 0
+                || item.RunTimeTicks is null or 0)
             .ToList();
 
         if (unprobed.Count == 0)

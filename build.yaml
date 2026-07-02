@@ -1,6 +1,6 @@
 name: "JellySTRMprobe"
 guid: "b8f5e3a1-d4c7-4f2e-9a6b-1c8d3e5f7a9b"
-version: "1.3.0.0"
+version: "1.4.0.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 owner: "cosmicflow2512"
@@ -22,6 +22,10 @@ category: "General"
 artifacts:
   - "JellySTRMprobe.dll"
 changelog: |
+  ## v1.4.0.0
+  - Catch-up mode now also reprobes newly added STRM items that already have
+    media streams but a missing duration (RunTimeTicks null/0), matching the
+    scheduled task's selection
   ## v1.3.0.0
   - Also reprobe STRM items that already have media streams but a missing
     duration (RunTimeTicks null/0), not just items with no stream data at all
