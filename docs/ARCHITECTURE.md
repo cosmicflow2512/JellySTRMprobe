@@ -135,6 +135,21 @@ if (video.IsShortcut)
 A second gate follows inside `RefreshTrickplayDataInternal`: `if (!File.Exists(mediaPath)) return;`,
 which rejects the HTTP URL a STRM resolves to even if the first gate were passed.
 
+### Switching Trickplay Off
+
+`EnableStrmTrickplay` is off by default. Three separate switches are needed, because each
+covers a different way the task could start:
+
+| Entry point | Guard | Why it is not redundant |
+|---|---|---|
+| Shows up in Scheduled Tasks | `IsHidden` | `ScheduledTasksController.GetTasks()` re-reads it on **every** request and `jellyfin-web` asks for `isHidden: false`, so the toggle applies without a restart |
+| A trigger the admin added fires | `IsEnabled` | `ScheduledTaskWorker.OnTriggerTriggered()` returns early when false |
+| Manual run / direct API call | Guard in `ExecuteAsync` | Goes straight to `QueueScheduledTask`, which consults neither of the above |
+
+`IsHidden`/`IsEnabled` read through `Plugin.InstanceOrNull`, not `Plugin.Instance`. They are
+evaluated while the server assembles the task list; a throw there would break the whole
+`/ScheduledTasks` endpoint rather than just this one task.
+
 ### How This Plugin Bypasses the Trickplay Gate
 
 `TrickplayService` calls the same pipeline the server uses, without the gates in front of it:
@@ -194,10 +209,14 @@ ProbeStrmTask.ExecuteAsync()
 ```
 StrmTrickplayTask.ExecuteAsync()
     │
-    ├─ TrickplayService.GetCandidates(libraryIds, maxItems)
+    ├─ Guard: EnableStrmTrickplay off → log, report 100%, return
+    │
+    ├─ TrickplayService.GetCandidatesAsync(libraryIds, maxItems)
     │   ├─ ILibraryManager.GetItemIds(InternalItemsQuery { AncestorIds })
+    │   ├─ ITrickplayManager.GetTrickplayItemsAsync() — paged, builds the already-done set
     │   ├─ Filter: item is Video && video.IsShortcut
     │   ├─ Filter: RunTimeTicks is not null/0  (probe task must have run)
+    │   ├─ Filter: not in the already-done set  ← must precede the cap
     │   └─ Stop at maxItems (0 = unlimited)
     │
     ├─ For each candidate (sequential — each run streams a whole file):
@@ -279,6 +298,7 @@ CatchUpEntryPoint.StartAsync()
 | `ProbeTimeoutSeconds` | int | 60 | Per-item timeout |
 | `ProbeCooldownMs` | int | 200 | Delay between probes |
 | `SelectedLibraryIds` | Guid[] | empty | Libraries both tasks work on (empty = all) |
+| `EnableStrmTrickplay` | bool | false | Makes the trickplay task available |
 | `TrickplayMaxItemsPerRun` | int | 50 | Cap for the trickplay task (0 = unlimited) |
 
 ### Configuration UI
@@ -325,6 +345,12 @@ The trickplay task is deliberately **sequential**. Probing reads a few seconds o
 but trickplay extraction transfers the whole file — running several of those at once would
 saturate the provider link rather than finish sooner. `TrickplayMaxItemsPerRun` bounds a run
 instead.
+
+The cap only works because completed items are filtered out **before** it is applied. Filtering
+them afterwards would make every run re-select the same first N items, and the library would
+never be worked through. An item counts as done once it has any trickplay row — matching on the
+configured widths would stall for videos narrower than a configured width, whose tiles are stored
+at the clamped width and would never match.
 
 ## Target Platform
 

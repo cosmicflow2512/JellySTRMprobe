@@ -26,7 +26,7 @@ A scheduled task (Dashboard > Scheduled Tasks > **Probe STRM Media Info**) that:
 - Runs daily at 4:00 AM by default (customizable)
 - Reports progress and is cancellable from the Dashboard
 
-### Trickplay Task
+### Trickplay Task (optional, off by default)
 A second scheduled task (Dashboard > Scheduled Tasks > **Generate STRM Trickplay**) that creates
 the scrubbing preview tiles Jellyfin refuses to generate for STRM:
 - Jellyfin's resolver marks every `.strm` as `IsShortcut`, and `TrickplayManager.CanGenerateTrickplay()`
@@ -36,14 +36,35 @@ the scrubbing preview tiles Jellyfin refuses to generate for STRM:
   `SaveTrickplayInfo`), bypassing that gate
 - Uses the server's own **Dashboard > Playback > Trickplay** settings (interval, widths, tile size,
   hardware acceleration), so there is nothing to configure twice
-- Skips widths that already have tiles, so re-running is cheap
+- Skips items that already have tiles, so re-running is cheap
 - **No default trigger** — run it manually, or add a schedule once you're happy with it
+- With *Maximum items per run* set, each run picks up where the last one left off, so a
+  nightly schedule works through a large library incrementally
+
+> **Switched off out of the box.** Enable *Enable STRM trickplay* in the plugin settings first.
+> While it is off the task is hidden from Scheduled Tasks and refuses to run even if started
+> through the API. Toggling it takes effect immediately — no server restart.
 
 > **Run the probe task first.** Trickplay generation needs a duration and a video stream, which is
 > exactly what **Probe STRM Media Info** supplies. Items without them are skipped and logged.
 
-> **Bandwidth warning.** Extracting thumbnails streams each file in full. Start with a single
-> library selected and a small *Maximum items per run*.
+#### Why it is slow, and what actually helps
+
+Every item is streamed **in full** through your provider, and the task runs sequentially on
+purpose — several concurrent full-file transfers would saturate the link rather than finish
+sooner. On a slow connection the network, not the CPU, is the limit.
+
+The useful levers all live in **Dashboard > Playback > Trickplay** and are picked up automatically:
+
+| Setting | Effect |
+|---------|--------|
+| *Extract keyframes only* | Biggest win — skips decoding every frame |
+| A single width resolution | Each additional width is another complete pass over the same file |
+| A longer interval | Fewer thumbnails per file |
+| Hardware acceleration | Helps when the CPU is the bottleneck, not the network |
+
+Start with one library selected and a small *Maximum items per run*, then let repeated runs work
+through the rest.
 
 ### Catch-Up Mode
 Automatically probes new STRM items as they're added during library scans:
@@ -60,7 +81,8 @@ All settings are accessible from Dashboard > Plugins > JellySTRMprobe:
 | Parallelism | 5 | 1–20 | Concurrent probe operations |
 | Timeout | 60s | 10–300s | Per-item probe timeout |
 | Cooldown | 200ms | 0–5000ms | Delay between probes (prevents upstream overload) |
-| Trickplay max items per run | 50 | 0–100000 | Cap for the trickplay task (0 = unlimited) |
+| Enable STRM trickplay | Disabled | On/Off | Makes the trickplay task available; hidden and inert while off |
+| Trickplay max items per run | 50 | 0–100000 | Cap per trickplay run; the next run continues with the remaining items (0 = unlimited) |
 | Libraries | All | Multi-select | Which libraries both tasks work on |
 
 ## Installation
@@ -85,12 +107,12 @@ the release ZIP, and add a new entry to `manifest.json` (see
 
 ### Manual Installation
 
-1. Download `dist/JellySTRMprobe_1.5.0.0.zip` from this repository
+1. Download `dist/JellySTRMprobe_1.6.0.0.zip` from this repository
 2. Extract it into a versioned folder in your Jellyfin plugins directory so that
    `JellySTRMprobe.dll` and `meta.json` sit side by side:
    ```
-   <jellyfin-data>/plugins/JellySTRMprobe_1.5.0.0/JellySTRMprobe.dll
-   <jellyfin-data>/plugins/JellySTRMprobe_1.5.0.0/meta.json
+   <jellyfin-data>/plugins/JellySTRMprobe_1.6.0.0/JellySTRMprobe.dll
+   <jellyfin-data>/plugins/JellySTRMprobe_1.6.0.0/meta.json
    ```
    (On the official Docker image `<jellyfin-data>` is `/config`.)
 3. Restart Jellyfin
@@ -159,6 +181,46 @@ md5sum dist/JellySTRMprobe_<version>.zip
 ## Fork Changes
 
 This is a fork of [firestaerter3/JellySTRMprobe](https://github.com/firestaerter3/JellySTRMprobe), maintained by [cosmicflow2512](https://github.com/cosmicflow2512).
+
+### v1.6.0 — Trickplay is opt-in
+
+**What changed:** New setting `EnableStrmTrickplay`, off by default. While it is off,
+`StrmTrickplayTask.IsHidden` returns `true` so the task disappears from Scheduled Tasks,
+`IsEnabled` returns `false` so any trigger an admin added stops firing, and `ExecuteAsync`
+returns immediately with a log line. The plugin settings page hides the task from its schedule
+panel too, and refreshes that panel right after saving. The capped-run fix below ships in this
+release as well.
+
+**Why:** Trickplay works, but it is slow — each item is streamed in full through the provider,
+and the task runs sequentially by design. That is a fair trade for someone who wants scrubbing
+previews and a poor one for everyone else, so it should not sit in the task list inviting a click.
+Three separate switches are needed because they cover three different entry points:
+`IsHidden` only affects the listing (`ScheduledTasksController.GetTasks()` re-reads it on every
+request, which is why no restart is needed), `IsEnabled` is checked in
+`ScheduledTaskWorker.OnTriggerTriggered()` and so only stops scheduled runs, and neither one
+blocks a manual start — that goes straight to `QueueScheduledTask`, hence the guard inside
+`ExecuteAsync`. `IsHidden`/`IsEnabled` read through `Plugin.InstanceOrNull` rather than
+`Plugin.Instance`: they are evaluated while the server builds the task list, where a throw would
+break the whole endpoint instead of just this task. Covered by tests in
+`JellySTRMprobe.Tests/Tasks/StrmTrickplayTaskTests.cs`.
+
+### v1.6.0 — Capped trickplay runs now advance through the library
+
+**What changed:** `TrickplayService.GetCandidates()` selected items by "is a STRM with a duration"
+and then truncated at `TrickplayMaxItemsPerRun`. The "already has trickplay" check lived one level
+down in `GenerateAsync()`. With a limit of 3 that meant: run 1 processed items A, B, C; run 2
+selected A, B, C again, skipped all three (`0 generated, 3 skipped`), and items D, E, F were never
+reached. The cap pinned the task to the same items forever. Completed items are now filtered out
+**before** the limit is applied — the method became `GetCandidatesAsync()` and builds the
+already-done set in one pass via `ITrickplayManager.GetTrickplayItemsAsync()`. Regression test:
+`GetCandidates_CappedRun_AdvancesPastCompletedItems`.
+
+**Why:** A per-run cap is only useful if repeated runs make progress; otherwise it is a permanent
+ceiling. An item counts as done once it has any trickplay row. Comparing against the configured
+widths instead would stall a capped run for a different reason: videos narrower than a configured
+width get their tiles at the clamped width, would never match the expected set, and would be
+re-selected on every run while producing nothing. The trade-off is that adding a new width profile
+later does not retroactively revisit finished items — delete their trickplay data to force a rebuild.
 
 ### v1.5.0 — Trickplay for STRM items
 

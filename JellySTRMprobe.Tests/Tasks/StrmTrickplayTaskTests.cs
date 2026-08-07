@@ -24,6 +24,10 @@ public class StrmTrickplayTaskTests
 
         TestHelpers.EnsurePluginInstance();
 
+        // The feature ships off; every test below that exercises a run needs it on.
+        // Tests share the configuration singleton, so the ones that change it reset it.
+        Plugin.Instance.Configuration.EnableStrmTrickplay = true;
+
         _task = new StrmTrickplayTask(
             _mockTrickplayService.Object,
             new Mock<ILogger<StrmTrickplayTask>>().Object);
@@ -44,8 +48,8 @@ public class StrmTrickplayTaskTests
     private void SetupCandidates(params Video[] videos)
     {
         _mockTrickplayService
-            .Setup(s => s.GetCandidates(It.IsAny<Guid[]>(), It.IsAny<int>()))
-            .Returns(videos);
+            .Setup(s => s.GetCandidatesAsync(It.IsAny<Guid[]>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(videos);
     }
 
     [Fact]
@@ -54,9 +58,61 @@ public class StrmTrickplayTaskTests
         _task.Name.Should().Be("Generate STRM Trickplay");
         _task.Key.Should().Be("StrmTrickplayGeneration");
         _task.Category.Should().Be("STRM Probe");
+        _task.IsLogged.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Task_IsVisibleAndEnabled_WhenTrickplayIsOn()
+    {
+        Plugin.Instance.Configuration.EnableStrmTrickplay = true;
+
         _task.IsHidden.Should().BeFalse();
         _task.IsEnabled.Should().BeTrue();
-        _task.IsLogged.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Task_IsHiddenAndDisabled_WhenTrickplayIsOff()
+    {
+        Plugin.Instance.Configuration.EnableStrmTrickplay = false;
+
+        try
+        {
+            _task.IsHidden.Should().BeTrue();
+            _task.IsEnabled.Should().BeFalse();
+        }
+        finally
+        {
+            Plugin.Instance.Configuration.EnableStrmTrickplay = true;
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenTrickplayIsOff_DoesNothing()
+    {
+        Plugin.Instance.Configuration.EnableStrmTrickplay = false;
+
+        SetupCandidates(CreateStrmVideo("/media/one.strm"));
+
+        double? lastProgress = null;
+        var progress = new Progress<double>(v => lastProgress = v);
+
+        try
+        {
+            await _task.ExecuteAsync(progress, CancellationToken.None);
+            await Task.Delay(100);
+        }
+        finally
+        {
+            Plugin.Instance.Configuration.EnableStrmTrickplay = true;
+        }
+
+        lastProgress.Should().Be(100);
+        _mockTrickplayService.Verify(
+            s => s.GetCandidatesAsync(It.IsAny<Guid[]>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _mockTrickplayService.Verify(
+            s => s.GenerateAsync(It.IsAny<Video>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]
@@ -121,7 +177,7 @@ public class StrmTrickplayTaskTests
         await _task.ExecuteAsync(new Progress<double>(), CancellationToken.None);
 
         _mockTrickplayService.Verify(
-            s => s.GetCandidates(It.Is<Guid[]>(ids => ids.Single() == libraryId), 7),
+            s => s.GetCandidatesAsync(It.Is<Guid[]>(ids => ids.Single() == libraryId), 7, It.IsAny<CancellationToken>()),
             Times.Once);
 
         Plugin.Instance.Configuration.SelectedLibraryIds = Array.Empty<Guid>();

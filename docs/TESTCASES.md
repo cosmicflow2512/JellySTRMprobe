@@ -67,6 +67,9 @@ ffmpeg process and is covered by the manual scenario IT-6 instead.
 | TC-2b.5 | Skips unresolvable items | GetItemById throws for one ID | Other item still returned |
 | TC-2b.6 | Respects maxItems | 5 candidates, maxItems=2 | 2 items returned |
 | TC-2b.7 | maxItems=0 means unlimited | 5 candidates, maxItems=0 | 5 items returned |
+| TC-2b.10 | Excludes items that already have trickplay | 2 items, 1 already done | Only the pending item returned |
+| TC-2b.11 | Capped run advances past completed items (regression) | 5 items, first 2 done, maxItems=2 | Items 3 and 4 returned, not 1 and 2 |
+| TC-2b.12 | Pages through all trickplay rows | Full first page, item on second page | Second page requested, item excluded |
 | TC-2b.8 | No library IDs leaves AncestorIds unset | Empty Guid[] | Query.AncestorIds empty |
 | TC-2b.9 | Library IDs set AncestorIds | One library ID | Query.AncestorIds contains it |
 
@@ -75,6 +78,9 @@ ffmpeg process and is covered by the manual scenario IT-6 instead.
 | ID | Test Case | Setup | Expected |
 |----|-----------|-------|----------|
 | TC-2c.1 | Task has correct metadata | — | Name="Generate STRM Trickplay", Key="StrmTrickplayGeneration", Category="STRM Probe" |
+| TC-2c.8 | Visible and enabled when trickplay is on | EnableStrmTrickplay=true | IsHidden=false, IsEnabled=true |
+| TC-2c.9 | Hidden and disabled when trickplay is off | EnableStrmTrickplay=false | IsHidden=true, IsEnabled=false |
+| TC-2c.10 | Execute does nothing when trickplay is off | EnableStrmTrickplay=false, 1 candidate | Progress 100%, GetCandidatesAsync and GenerateAsync never called |
 | TC-2c.2 | No default trigger | — | GetDefaultTriggers() is empty |
 | TC-2c.3 | Execute skips when no candidates | 0 candidates | Progress reports 100%, GenerateAsync never called |
 | TC-2c.4 | Execute generates for every candidate | 3 candidates | GenerateAsync called once per item |
@@ -163,7 +169,10 @@ and a reachable stream.
 
 | Step | Action | Expected Result |
 |------|--------|-----------------|
-| 1 | Select a single library and set *Maximum items per run* to a small number | Setting saved |
+| 0a | Fresh install, look at Scheduled Tasks | Only "Probe STRM Media Info" under "STRM Probe" — trickplay is off by default |
+| 0b | Enable *Enable STRM trickplay*, save, reload Scheduled Tasks | "Generate STRM Trickplay" appears **without a server restart** |
+| 0c | Turn it off again, then `POST /ScheduledTasks/Running/StrmTrickplayGeneration` | Returns at once, log shows "STRM trickplay is disabled in the plugin configuration", nothing extracted |
+| 1 | Turn it back on. Select a single library and set *Maximum items per run* to a small number | Setting saved |
 | 2 | Run "Probe STRM Media Info" first | Items have duration and a video stream |
 | 3 | Navigate to Dashboard > Scheduled Tasks | "Generate STRM Trickplay" visible under "STRM Probe", no schedule |
 | 4 | Click Run | "Found N STRM videos with usable media info" logged |
@@ -171,7 +180,7 @@ and a reachable stream.
 | 6 | Confirm ffmpeg was actually invoked | `image2` / `mjpeg` calls appear in the ffmpeg log (they were absent before) |
 | 7 | Check the tile directory | JPEG tiles exist under the trickplay directory |
 | 8 | Hover the seekbar of a STRM movie in the web client | Scrubbing previews appear |
-| 9 | Run the task a second time | Items with existing tiles are skipped, run finishes quickly |
+| 9 | Run the task a second time | Log shows "N already done"; the run picks up the *next* items, not the same ones |
 | 10 | Run against items that were never probed | Items skipped with "run the probe task first", no crash |
 | 11 | Grep the log for the stream URL | No provider credentials logged |
 

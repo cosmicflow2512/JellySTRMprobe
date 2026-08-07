@@ -69,7 +69,7 @@ public class TrickplayService : ITrickplayService
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<Video> GetCandidates(Guid[] selectedLibraryIds, int maxItems)
+    public async Task<IReadOnlyList<Video>> GetCandidatesAsync(Guid[] selectedLibraryIds, int maxItems, CancellationToken cancellationToken)
     {
         // Jellyfin 10.11.x EF Core: TopParentIds and MediaTypes filters return 0
         // results. AncestorIds uses a join table and works correctly.
@@ -83,11 +83,19 @@ public class TrickplayService : ITrickplayService
         var itemIds = _libraryManager.GetItemIds(query);
         _logger.LogInformation("Query returned {Count} item IDs", itemIds.Count);
 
+        // Items that already have trickplay must be filtered out *before* maxItems is
+        // applied. Skipping them later would make a capped run re-select the same first
+        // N items forever and never reach the rest of the library.
+        var alreadyDone = await GetItemsWithTrickplayAsync(cancellationToken).ConfigureAwait(false);
+
         var candidates = new List<Video>();
         var skippedNoDuration = 0;
+        var skippedHaveTrickplay = 0;
 
         foreach (var id in itemIds)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             BaseItem? item;
             try
             {
@@ -111,21 +119,69 @@ public class TrickplayService : ITrickplayService
                 continue;
             }
 
+            if (alreadyDone.Contains(video.Id))
+            {
+                skippedHaveTrickplay++;
+                continue;
+            }
+
             candidates.Add(video);
 
             if (maxItems > 0 && candidates.Count >= maxItems)
             {
-                _logger.LogInformation("Reached the per-run limit of {MaxItems} items", maxItems);
+                _logger.LogInformation(
+                    "Reached the per-run limit of {MaxItems} items; the next run continues with the remaining items",
+                    maxItems);
                 break;
             }
         }
 
         _logger.LogInformation(
-            "Found {Count} STRM videos with usable media info ({Skipped} skipped for missing duration)",
+            "Selected {Count} STRM videos for trickplay ({HaveTrickplay} already done, {NoDuration} skipped for missing duration)",
             candidates.Count,
+            skippedHaveTrickplay,
             skippedNoDuration);
 
         return candidates;
+    }
+
+    /// <summary>
+    /// Collects the IDs of every item that already has trickplay data, in one pass.
+    ///
+    /// An item counts as done once it has any trickplay row. Comparing against the
+    /// configured widths instead would permanently stall a capped run: videos narrower
+    /// than a configured width get their tiles at the clamped width, would never match,
+    /// and would be re-selected on every run without ever producing anything new.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The set of item IDs that already have trickplay.</returns>
+    private async Task<HashSet<Guid>> GetItemsWithTrickplayAsync(CancellationToken cancellationToken)
+    {
+        const int PageSize = 1000;
+
+        var result = new HashSet<Guid>();
+        var offset = 0;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var page = await _trickplayManager.GetTrickplayItemsAsync(PageSize, offset).ConfigureAwait(false);
+
+            foreach (var info in page)
+            {
+                result.Add(info.ItemId);
+            }
+
+            if (page.Count < PageSize)
+            {
+                break;
+            }
+
+            offset += PageSize;
+        }
+
+        return result;
     }
 
     /// <inheritdoc />

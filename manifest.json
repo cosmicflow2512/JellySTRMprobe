@@ -8,6 +8,14 @@
         "overview": "Probe STRM files to extract media info (codec, resolution, duration, audio)",
         "versions": [
             {
+                "version": "1.6.0.0",
+                "changelog": "- Trickplay is now opt-in and off by default. Generating it streams every file in full, so a run takes a long time; the new \"Enable STRM trickplay\" setting keeps the task hidden from Scheduled Tasks and refuses to run until you turn it on. Toggling it takes effect without a server restart.\n- Fix: with \"Maximum items per run\" set, the trickplay task re-selected the same first N items on every run and never reached the rest of the library. Items that already have trickplay are now filtered out before the limit is applied.",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://raw.githubusercontent.com/cosmicflow2512/JellySTRMprobe/master/dist/JellySTRMprobe_1.6.0.0.zip",
+                "checksum": "99f932187c8c22a7252a26db39583626",
+                "timestamp": "2026-08-07T10:15:00.0000000Z"
+            },
+            {
                 "version": "1.5.0.0",
                 "changelog": "- New scheduled task \"Generate STRM Trickplay\": creates trickplay scrubbing previews for STRM items. Jellyfin skips them because its resolver marks .strm files as shortcuts and TrickplayManager.CanGenerateTrickplay() rejects shortcuts.\n- Requires the probe task to have run first (needs a duration and a video stream).\n- No default trigger; run manually or add a schedule.\n- New setting \"Maximum items per run\" (default 50, 0 = unlimited) so an accidental run cannot pull the entire library through the provider.",
                 "targetAbi": "10.11.0.0",
