@@ -1,6 +1,6 @@
 name: "JellySTRMprobe"
 guid: "b8f5e3a1-d4c7-4f2e-9a6b-1c8d3e5f7a9b"
-version: "1.6.0.0"
+version: "1.6.1.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 owner: "cosmicflow2512"
@@ -24,6 +24,14 @@ category: "General"
 artifacts:
   - "JellySTRMprobe.dll"
 changelog: |
+  ## v1.6.1.0
+  - New setting "Timeout per item" (default 60 minutes, 0 = no limit) for the trickplay
+    task. Jellyfin already kills an ffmpeg that stops producing images, but an item that
+    trickles along slowly could otherwise occupy a run for hours with no way out short of
+    cancelling the whole task. A timed-out item is logged and the run continues
+  - Cancelling the trickplay task is no longer reported as a generation failure. Killing
+    ffmpeg surfaces as a plain exception rather than OperationCanceledException, so the
+    cancellation was previously logged as an error
   ## v1.6.0.0
   - Trickplay is now opt-in and off by default. Generating it streams every file in
     full, so a run takes a long time; the new "Enable STRM trickplay" setting keeps

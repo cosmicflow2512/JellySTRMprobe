@@ -8,6 +8,14 @@
         "overview": "Probe STRM files to extract media info (codec, resolution, duration, audio)",
         "versions": [
             {
+                "version": "1.6.1.0",
+                "changelog": "- New setting \"Timeout per item\" (default 60 minutes, 0 = no limit) for the trickplay task. Jellyfin already kills an ffmpeg that stops producing images, but an item that trickles along slowly could otherwise occupy a run for hours with no way out short of cancelling the whole task. A timed-out item is logged and the run continues.\n- Cancelling the trickplay task is no longer reported as a generation failure.",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://raw.githubusercontent.com/cosmicflow2512/JellySTRMprobe/master/dist/JellySTRMprobe_1.6.1.0.zip",
+                "checksum": "3247a1a087dc0bb4bc827d853a2d6fe9",
+                "timestamp": "2026-08-07T17:05:00.0000000Z"
+            },
+            {
                 "version": "1.6.0.0",
                 "changelog": "- Trickplay is now opt-in and off by default. Generating it streams every file in full, so a run takes a long time; the new \"Enable STRM trickplay\" setting keeps the task hidden from Scheduled Tasks and refuses to run until you turn it on. Toggling it takes effect without a server restart.\n- Fix: with \"Maximum items per run\" set, the trickplay task re-selected the same first N items on every run and never reached the rest of the library. Items that already have trickplay are now filtered out before the limit is applied.",
                 "targetAbi": "10.11.0.0",

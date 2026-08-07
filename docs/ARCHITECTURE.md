@@ -150,6 +150,27 @@ covers a different way the task could start:
 evaluated while the server assembles the task list; a throw there would break the whole
 `/ScheduledTasks` endpoint rather than just this one task.
 
+### Two Different Timeouts
+
+Jellyfin already guards against a **stalled** encoder. `ExtractVideoImagesOnIntervalInternal`
+polls the output directory every `ImageExtractionTimeoutMs` (server config, default 0 → 20 s):
+
+```csharp
+var jpegCount = _fileSystem.GetFilePaths(targetDirectory).Count();
+isResponsive = jpegCount > lastCount;
+```
+
+No new image in that window → "Trickplay process unresponsive", ffmpeg is stopped, the temp
+directory is deleted by `MediaEncoder` itself, and an `FfmpegException` is thrown.
+
+What that does **not** bound is total runtime — an item producing one image every 19 seconds
+stays "responsive" forever. `TrickplayTimeoutMinutes` covers that: a linked
+`CancellationTokenSource` with `CancelAfter` per item, checked in `GenerateAsync`.
+
+Both the timeout and the task's cancellation handling test the **token**, not the exception type.
+Killing ffmpeg raises `FfmpegException`, so a cancellation never arrives as
+`OperationCanceledException` and would otherwise be logged as a generation failure.
+
 ### How This Plugin Bypasses the Trickplay Gate
 
 `TrickplayService` calls the same pipeline the server uses, without the gates in front of it:
@@ -220,7 +241,8 @@ StrmTrickplayTask.ExecuteAsync()
     │   └─ Stop at maxItems (0 = unlimited)
     │
     ├─ For each candidate (sequential — each run streams a whole file):
-    │   └─ TrickplayService.GenerateAsync(video)
+    │   └─ TrickplayService.GenerateAsync(video, timeoutMinutes)
+    │       ├─ Linked CTS with CancelAfter(timeoutMinutes) — abandons a slow item
     │       ├─ Video.GetMediaSources(false), matched on the video's own ID
     │       ├─ Resolve input: mediaSource.Path (URL), else read the .strm file
     │       ├─ ITrickplayManager.GetTrickplayResolutions() — skip widths already done
@@ -299,6 +321,7 @@ CatchUpEntryPoint.StartAsync()
 | `ProbeCooldownMs` | int | 200 | Delay between probes |
 | `SelectedLibraryIds` | Guid[] | empty | Libraries both tasks work on (empty = all) |
 | `EnableStrmTrickplay` | bool | false | Makes the trickplay task available |
+| `TrickplayTimeoutMinutes` | int | 60 | Per-item time budget (0 = no limit) |
 | `TrickplayMaxItemsPerRun` | int | 50 | Cap for the trickplay task (0 = unlimited) |
 
 ### Configuration UI

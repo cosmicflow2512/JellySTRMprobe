@@ -66,6 +66,8 @@ in `RefreshTrickplayDataAsync()`. The library option *Extract trickplay images* 
 | FR-1b.8 | The task SHALL skip items that already have trickplay data, making re-runs cheap |
 | FR-1b.8a | Items that already have trickplay SHALL be excluded **before** the per-run limit is applied, so successive capped runs advance through the library instead of re-selecting the same items |
 | FR-1b.9 | The task SHALL process items sequentially — each item transfers a whole file |
+| FR-1b.9a | The task SHALL enforce a configurable per-item time budget. On expiry the item SHALL be abandoned with a warning and the run SHALL continue with the next item |
+| FR-1b.9b | Cancelling the task SHALL NOT be reported as a generation failure, even though killing ffmpeg raises a non-cancellation exception |
 | FR-1b.10 | The task SHALL have no default trigger and SHALL be run manually until an admin schedules it |
 | FR-1b.11 | The task SHALL report progress (0-100%), be cancellable, and log generated/skipped/failed counts |
 | FR-1b.12 | A failure on one item SHALL NOT abort the run |
@@ -95,6 +97,7 @@ in `RefreshTrickplayDataAsync()`. The library option *Extract trickplay images* 
 | FR-3.6 | Configurable: Library selection — which libraries both tasks work on (default: all) |
 | FR-3.8 | Configurable: Trickplay maximum items per run 0-100000 (default: 50, 0 = unlimited) |
 | FR-3.9 | Configurable: Enable STRM trickplay on/off (default: off) |
+| FR-3.10 | Configurable: Trickplay timeout per item 0-1440 minutes (default: 60, 0 = no limit) |
 | FR-3.7 | The configuration UI SHALL display a library multi-selector populated from Jellyfin's virtual folders |
 
 ### FR-4: Metadata Preservation

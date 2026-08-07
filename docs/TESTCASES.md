@@ -81,6 +81,8 @@ ffmpeg process and is covered by the manual scenario IT-6 instead.
 | TC-2c.8 | Visible and enabled when trickplay is on | EnableStrmTrickplay=true | IsHidden=false, IsEnabled=true |
 | TC-2c.9 | Hidden and disabled when trickplay is off | EnableStrmTrickplay=false | IsHidden=true, IsEnabled=false |
 | TC-2c.10 | Execute does nothing when trickplay is off | EnableStrmTrickplay=false, 1 candidate | Progress 100%, GetCandidatesAsync and GenerateAsync never called |
+| TC-2c.11 | Passes the configured timeout | TrickplayTimeoutMinutes=25 | GenerateAsync called with 25 |
+| TC-2c.12 | ffmpeg kill on cancellation becomes a cancellation | Token cancelled, GenerateAsync throws a plain exception | OperationCanceledException propagates, not logged as a failure |
 | TC-2c.2 | No default trigger | — | GetDefaultTriggers() is empty |
 | TC-2c.3 | Execute skips when no candidates | 0 candidates | Progress reports 100%, GenerateAsync never called |
 | TC-2c.4 | Execute generates for every candidate | 3 candidates | GenerateAsync called once per item |

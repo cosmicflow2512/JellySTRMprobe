@@ -18,6 +18,7 @@ public class PluginConfigurationTests
         config.SelectedLibraryIds.Should().BeEmpty();
         config.EnableStrmTrickplay.Should().BeFalse();
         config.TrickplayMaxItemsPerRun.Should().Be(50);
+        config.TrickplayTimeoutMinutes.Should().Be(60);
     }
 
     [Fact]

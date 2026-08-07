@@ -58,6 +58,13 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool EnableStrmTrickplay { get; set; } = false;
 
     /// <summary>
+    /// Gets or sets the per-item time budget for trickplay generation, in minutes.
+    /// Zero means no limit. Jellyfin already kills an ffmpeg that stops producing images,
+    /// but an item that trickles along slowly can otherwise occupy a run for hours.
+    /// </summary>
+    public int TrickplayTimeoutMinutes { get; set; } = 60;
+
+    /// <summary>
     /// Gets or sets the maximum number of items the trickplay task processes per run.
     /// Zero means unlimited. Trickplay extraction streams each file in full, so this
     /// limit keeps an accidental run from pulling the entire library through the provider.
@@ -74,5 +81,6 @@ public class PluginConfiguration : BasePluginConfiguration
         ProbeCooldownMs = Math.Clamp(ProbeCooldownMs, 0, 5000);
         DeleteFailureThreshold = Math.Clamp(DeleteFailureThreshold, 1, 100);
         TrickplayMaxItemsPerRun = Math.Clamp(TrickplayMaxItemsPerRun, 0, 100000);
+        TrickplayTimeoutMinutes = Math.Clamp(TrickplayTimeoutMinutes, 0, 1440);
     }
 }

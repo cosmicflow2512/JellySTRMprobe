@@ -28,7 +28,8 @@ public interface ITrickplayService
     /// Generates trickplay tiles for a single video at every configured width.
     /// </summary>
     /// <param name="video">The video to process.</param>
+    /// <param name="timeoutMinutes">Time budget for this item. Zero means no limit.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>True if at least one resolution was generated, false if the item was skipped.</returns>
-    Task<bool> GenerateAsync(Video video, CancellationToken cancellationToken);
+    /// <returns>True if at least one resolution was generated, false if the item was skipped or timed out.</returns>
+    Task<bool> GenerateAsync(Video video, int timeoutMinutes, CancellationToken cancellationToken);
 }
