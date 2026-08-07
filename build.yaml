@@ -1,6 +1,6 @@
 name: "JellySTRMprobe"
 guid: "b8f5e3a1-d4c7-4f2e-9a6b-1c8d3e5f7a9b"
-version: "1.4.0.0"
+version: "1.5.0.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 owner: "cosmicflow2512"
@@ -12,6 +12,8 @@ description: |
 
   Features:
   - Scheduled task to probe all unprobed STRM items
+  - Scheduled task to generate trickplay scrubbing previews for STRM items,
+    which Jellyfin skips by design
   - Catch-up mode to auto-probe new STRM items as they are added
   - Configurable parallelism, timeout, and cooldown
   - Per-library selection for targeted probing
@@ -22,6 +24,15 @@ category: "General"
 artifacts:
   - "JellySTRMprobe.dll"
 changelog: |
+  ## v1.5.0.0
+  - New scheduled task "Generate STRM Trickplay": creates trickplay scrubbing
+    previews for STRM items. Jellyfin's own trickplay generation skips them
+    because BaseVideoResolver marks .strm files as IsShortcut and
+    TrickplayManager.CanGenerateTrickplay() rejects shortcuts
+  - Requires the probe task to have run first (needs a duration and a video stream)
+  - No default trigger; run manually or add a schedule in Scheduled Tasks
+  - New setting "Maximum items per run" (default 50, 0 = unlimited) so an
+    accidental run cannot pull the entire library through the provider
   ## v1.4.0.0
   - Catch-up mode now also reprobes newly added STRM items that already have
     media streams but a missing duration (RunTimeTicks null/0), matching the

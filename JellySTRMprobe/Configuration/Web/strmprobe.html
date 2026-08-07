@@ -104,9 +104,32 @@
                     </div>
 
                     <div class="verticalSection">
+                        <h3 class="sectionTitle">Trickplay</h3>
+                        <p class="fieldDescription">
+                            Jellyfin never generates trickplay for STRM items — its resolver marks them as
+                            shortcuts and the trickplay generator rejects shortcuts outright. The
+                            <b>Generate STRM Trickplay</b> scheduled task does it anyway. It needs media info,
+                            so run <b>Probe STRM Media Info</b> first.
+                        </p>
+
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="txtTrickplayMaxItemsPerRun">
+                                Maximum items per run (0 = unlimited)
+                            </label>
+                            <input is="emby-input" type="number" id="txtTrickplayMaxItemsPerRun"
+                                   min="0" max="100000" step="1" />
+                            <div class="fieldDescription">
+                                Trickplay extraction streams each file in full. This limit keeps an accidental
+                                run from pulling the entire library through your provider.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
                         <h3 class="sectionTitle">Library Selection</h3>
                         <p class="fieldDescription">
-                            Select which libraries to probe. Leave all unchecked to probe all libraries.
+                            Select which libraries both scheduled tasks work on.
+                            Leave all unchecked to cover all libraries.
                         </p>
                         <div id="libraryList"></div>
                     </div>

@@ -47,21 +47,29 @@ JellySTRMprobe/
 │   ├── JellySTRMprobe.csproj
 │   ├── Plugin.cs                            # BasePlugin<PluginConfiguration>, IHasWebPages
 │   ├── PluginConfiguration.cs               # Settings: parallelism, timeout, cooldown, libraries
-│   ├── PluginServiceRegistrator.cs          # DI: ProbeService, ProbeStrmTask
+│   ├── PluginServiceRegistrator.cs          # DI: services + scheduled tasks
 │   ├── Service/
-│   │   ├── IProbeService.cs                 # Service interface
-│   │   └── ProbeService.cs                  # Core probing logic
+│   │   ├── IProbeService.cs                 # Probe service interface
+│   │   ├── ProbeService.cs                  # Core probing logic
+│   │   ├── ProbeResult.cs                   # Batch probe outcome
+│   │   ├── ITrickplayService.cs             # Trickplay service interface
+│   │   └── TrickplayService.cs              # Core trickplay generation logic
 │   ├── Tasks/
-│   │   └── ProbeStrmTask.cs                 # IScheduledTask implementation
+│   │   ├── ProbeStrmTask.cs                 # IScheduledTask implementation
+│   │   └── StrmTrickplayTask.cs             # IScheduledTask implementation
 │   ├── EntryPoint/
 │   │   └── CatchUpEntryPoint.cs             # IHostedService, ItemAdded handler
 │   └── Configuration/Web/
-│       ├── config.html                      # Plugin settings page
-│       └── config.js                        # Settings form logic
+│       ├── strmprobe.html                   # Plugin settings page
+│       └── strmprobe.js                     # Settings form logic
 ├── JellySTRMprobe.Tests/                    # Unit tests
 │   ├── JellySTRMprobe.Tests.csproj
-│   └── Service/
-│       └── ProbeServiceTests.cs
+│   ├── Service/
+│   │   ├── ProbeServiceTests.cs
+│   │   └── TrickplayServiceTests.cs
+│   └── Tasks/
+│       ├── ProbeStrmTaskTests.cs
+│       └── StrmTrickplayTaskTests.cs
 ├── jellyfin.ruleset                         # Code analysis rules
 ├── JellySTRMprobe.sln                       # Solution file
 ├── CLAUDE.md                                # Project context for Claude
@@ -106,6 +114,53 @@ This triggers Jellyfin's internal ffprobe pipeline:
 4. Stores MediaStreams in the database
 5. Item now shows codec, resolution, duration, audio channels in the UI
 
+### How Jellyfin Blocks STRM Trickplay
+
+A separate, unrelated gate. In `TrickplayManager.CanGenerateTrickplay()`:
+
+```csharp
+if (video.IsShortcut)
+{
+    return false;
+}
+```
+
+`CanGenerateTrickplay()` is the first condition inside `RefreshTrickplayDataAsync()`, and
+`BaseVideoResolver` sets `IsShortcut = true` for every `.strm`. Consequences:
+
+- The library option *Extract trickplay images* is inert for STRM — ffmpeg is never invoked
+- Pre-placed tiles are not imported either: `DiscoverExistingTrickplayAsync()` only runs past that return
+- Fixing the duration does not help — the `RunTimeTicks` gate sits **behind** the `IsShortcut` gate
+
+A second gate follows inside `RefreshTrickplayDataInternal`: `if (!File.Exists(mediaPath)) return;`,
+which rejects the HTTP URL a STRM resolves to even if the first gate were passed.
+
+### How This Plugin Bypasses the Trickplay Gate
+
+`TrickplayService` calls the same pipeline the server uses, without the gates in front of it:
+
+```csharp
+imgTempDir = await _mediaEncoder.ExtractVideoImagesOnIntervalAccelerated(
+    inputPath, mediaSource.Container, mediaSource, mediaSource.VideoStream, actualWidth, ...);
+
+var info = _trickplayManager.CreateTiles(images, actualWidth, options, outputDir);
+info.ItemId = video.Id;                              // CreateTiles does not set this
+await _trickplayManager.SaveTrickplayInfo(info);
+```
+
+Two details matter:
+
+- **`inputPath` is a URL, not the `.strm` file.** `BaseItem.GetVersionInfo()` already replaces a
+  shortcut's media source path with `Video.ShortcutPath` and sets `Protocol` accordingly, so
+  `mediaSource.Path` is the stream URL. The `.strm` file is only read as a fallback when
+  `ShortcutPath` was never populated. No ffmpeg wrapper is required.
+- **`CreateTiles()` leaves `TrickplayInfo.ItemId` empty.** Jellyfin's own code assigns it right
+  after the call; so does this plugin. Without it the tiles exist on disk but no client finds them.
+
+All tuning (interval, widths, tile size, quality, hardware acceleration) is read from the server's
+`TrickplayOptions`, so there is no second set of settings. The options are copied before use —
+an out-of-range interval is raised to 1000 ms on the copy rather than mutating live server config.
+
 ## Data Flow
 
 ### Scheduled Task Flow
@@ -132,6 +187,34 @@ ProbeStrmTask.ExecuteAsync()
     │   └─ Return (probed, failed)
     │
     └─ Log results
+```
+
+### Trickplay Task Flow
+
+```
+StrmTrickplayTask.ExecuteAsync()
+    │
+    ├─ TrickplayService.GetCandidates(libraryIds, maxItems)
+    │   ├─ ILibraryManager.GetItemIds(InternalItemsQuery { AncestorIds })
+    │   ├─ Filter: item is Video && video.IsShortcut
+    │   ├─ Filter: RunTimeTicks is not null/0  (probe task must have run)
+    │   └─ Stop at maxItems (0 = unlimited)
+    │
+    ├─ For each candidate (sequential — each run streams a whole file):
+    │   └─ TrickplayService.GenerateAsync(video)
+    │       ├─ Video.GetMediaSources(false), matched on the video's own ID
+    │       ├─ Resolve input: mediaSource.Path (URL), else read the .strm file
+    │       ├─ ITrickplayManager.GetTrickplayResolutions() — skip widths already done
+    │       └─ For each configured width:
+    │           ├─ Normalize width (even, clamped to the video width)
+    │           ├─ IMediaEncoder.ExtractVideoImagesOnIntervalAccelerated() → temp JPEGs
+    │           ├─ ITrickplayManager.GetTrickplayDirectory()
+    │           ├─ ITrickplayManager.CreateTiles() → TrickplayInfo
+    │           ├─ info.ItemId = video.Id
+    │           ├─ ITrickplayManager.SaveTrickplayInfo()
+    │           └─ finally: delete temp directory
+    │
+    └─ Log results (generated / skipped / failed)
 ```
 
 ### Catch-up Flow
@@ -161,7 +244,9 @@ CatchUpEntryPoint.StartAsync()
 | Service | Lifetime | Description |
 |---------|----------|-------------|
 | `IProbeService` → `ProbeService` | Singleton | Core probing logic |
+| `ITrickplayService` → `TrickplayService` | Singleton | Core trickplay generation logic |
 | `ProbeStrmTask` | Singleton (as `IScheduledTask`) | Scheduled task |
+| `StrmTrickplayTask` | Singleton (as `IScheduledTask`) | Scheduled task |
 | `CatchUpEntryPoint` | Hosted Service | IHostedService, starts on server boot |
 
 ### Auto-discovered by Jellyfin
@@ -175,8 +260,12 @@ CatchUpEntryPoint.StartAsync()
 | Service | Used By | Purpose |
 |---------|---------|---------|
 | `IProviderManager` | ProbeService | `RefreshSingleItem()` — triggers ffprobe |
-| `ILibraryManager` | ProbeService, CatchUpEntryPoint | Query items, subscribe to events |
+| `ILibraryManager` | ProbeService, TrickplayService, CatchUpEntryPoint | Query items, library options, subscribe to events |
 | `IFileSystem` | ProbeService | Create `DirectoryService` for `MetadataRefreshOptions` |
+| `ITrickplayManager` | TrickplayService | `CreateTiles()`, `SaveTrickplayInfo()`, tile directory + existing resolutions |
+| `IMediaEncoder` | TrickplayService | `ExtractVideoImagesOnIntervalAccelerated()` — runs ffmpeg |
+| `EncodingHelper` | TrickplayService | Builds the ffmpeg input/filter arguments (registered in `ApplicationHost`) |
+| `IServerConfigurationManager` | TrickplayService | Reads the server's `TrickplayOptions` |
 | `ILogger<T>` | All components | Structured logging |
 
 ## Configuration
@@ -189,7 +278,8 @@ CatchUpEntryPoint.StartAsync()
 | `ProbeParallelism` | int | 5 | Max concurrent probes |
 | `ProbeTimeoutSeconds` | int | 60 | Per-item timeout |
 | `ProbeCooldownMs` | int | 200 | Delay between probes |
-| `SelectedLibraryIds` | Guid[] | empty | Libraries to probe (empty = all) |
+| `SelectedLibraryIds` | Guid[] | empty | Libraries both tasks work on (empty = all) |
+| `TrickplayMaxItemsPerRun` | int | 50 | Cap for the trickplay task (0 = unlimited) |
 
 ### Configuration UI
 
@@ -230,6 +320,11 @@ Each worker:
 A shared DirectoryService instance is reused across all workers
 to avoid per-item allocation overhead.
 ```
+
+The trickplay task is deliberately **sequential**. Probing reads a few seconds of each stream,
+but trickplay extraction transfers the whole file — running several of those at once would
+saturate the provider link rather than finish sooner. `TrickplayMaxItemsPerRun` bounds a run
+instead.
 
 ## Target Platform
 
