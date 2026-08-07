@@ -117,7 +117,7 @@ public class StrmTrickplayTask : IScheduledTask, IConfigurableScheduledTask
 
             try
             {
-                if (await _trickplayService.GenerateAsync(video, cancellationToken).ConfigureAwait(false))
+                if (await _trickplayService.GenerateAsync(video, config.TrickplayTimeoutMinutes, cancellationToken).ConfigureAwait(false))
                 {
                     succeeded++;
                 }
@@ -129,6 +129,14 @@ public class StrmTrickplayTask : IScheduledTask, IConfigurableScheduledTask
             catch (OperationCanceledException)
             {
                 throw;
+            }
+            catch (Exception ex) when (cancellationToken.IsCancellationRequested)
+            {
+                // Killing ffmpeg surfaces as FfmpegException rather than
+                // OperationCanceledException, so an admin cancelling the task would
+                // otherwise be reported as a failure.
+                _logger.LogInformation("Trickplay generation stopped for {Path}: task cancelled", video.Path);
+                throw new OperationCanceledException("STRM trickplay task cancelled", ex, cancellationToken);
             }
             catch (Exception ex)
             {

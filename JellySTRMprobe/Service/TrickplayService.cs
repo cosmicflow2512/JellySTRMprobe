@@ -185,7 +185,39 @@ public class TrickplayService : ITrickplayService
     }
 
     /// <inheritdoc />
-    public async Task<bool> GenerateAsync(Video video, CancellationToken cancellationToken)
+    public async Task<bool> GenerateAsync(Video video, int timeoutMinutes, CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        if (timeoutMinutes > 0)
+        {
+            timeoutCts.CancelAfter(TimeSpan.FromMinutes(timeoutMinutes));
+        }
+
+        try
+        {
+            return await GenerateCoreAsync(video, timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // A killed ffmpeg surfaces as FfmpegException, not OperationCanceledException,
+            // so the token has to be checked rather than the exception type.
+            _logger.LogWarning(
+                ex,
+                "Trickplay timed out for {Path} after {Timeout} minutes; moving on to the next item",
+                video.Path,
+                timeoutMinutes);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Generates trickplay tiles for a single video at every configured width.
+    /// </summary>
+    /// <param name="video">The video to process.</param>
+    /// <param name="cancellationToken">Token that already carries the per-item time budget.</param>
+    /// <returns>True if at least one resolution was generated.</returns>
+    private async Task<bool> GenerateCoreAsync(Video video, CancellationToken cancellationToken)
     {
         var options = CloneWithMinInterval(_serverConfig.Configuration.TrickplayOptions);
 

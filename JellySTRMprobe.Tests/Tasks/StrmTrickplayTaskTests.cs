@@ -111,7 +111,7 @@ public class StrmTrickplayTaskTests
             s => s.GetCandidatesAsync(It.IsAny<Guid[]>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.Never);
         _mockTrickplayService.Verify(
-            s => s.GenerateAsync(It.IsAny<Video>(), It.IsAny<CancellationToken>()),
+            s => s.GenerateAsync(It.IsAny<Video>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -136,7 +136,7 @@ public class StrmTrickplayTaskTests
 
         lastProgress.Should().Be(100);
         _mockTrickplayService.Verify(
-            s => s.GenerateAsync(It.IsAny<Video>(), It.IsAny<CancellationToken>()),
+            s => s.GenerateAsync(It.IsAny<Video>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -152,7 +152,7 @@ public class StrmTrickplayTaskTests
 
         SetupCandidates(videos);
         _mockTrickplayService
-            .Setup(s => s.GenerateAsync(It.IsAny<Video>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.GenerateAsync(It.IsAny<Video>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         await _task.ExecuteAsync(new Progress<double>(), CancellationToken.None);
@@ -160,7 +160,7 @@ public class StrmTrickplayTaskTests
         foreach (var video in videos)
         {
             _mockTrickplayService.Verify(
-                s => s.GenerateAsync(video, It.IsAny<CancellationToken>()),
+                s => s.GenerateAsync(video, It.IsAny<int>(), It.IsAny<CancellationToken>()),
                 Times.Once);
         }
     }
@@ -185,6 +185,51 @@ public class StrmTrickplayTaskTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_PassesConfiguredTimeout()
+    {
+        Plugin.Instance.Configuration.TrickplayTimeoutMinutes = 25;
+
+        SetupCandidates(CreateStrmVideo("/media/one.strm"));
+        _mockTrickplayService
+            .Setup(s => s.GenerateAsync(It.IsAny<Video>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        try
+        {
+            await _task.ExecuteAsync(new Progress<double>(), CancellationToken.None);
+        }
+        finally
+        {
+            Plugin.Instance.Configuration.TrickplayTimeoutMinutes = 60;
+        }
+
+        _mockTrickplayService.Verify(
+            s => s.GenerateAsync(It.IsAny<Video>(), 25, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_TranslatesFfmpegKillOnCancellationIntoCancellation()
+    {
+        // Cancelling the task kills ffmpeg, which surfaces as a plain exception rather
+        // than OperationCanceledException. That must not be reported as a failure.
+        using var cts = new CancellationTokenSource();
+
+        SetupCandidates(CreateStrmVideo("/media/one.strm"));
+        _mockTrickplayService
+            .Setup(s => s.GenerateAsync(It.IsAny<Video>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                await cts.CancelAsync();
+                throw new InvalidOperationException("ffmpeg image extraction failed");
+            });
+
+        var act = async () => await _task.ExecuteAsync(new Progress<double>(), cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ContinuesAfterItemFailure()
     {
         var failing = CreateStrmVideo("/media/bad.strm");
@@ -193,10 +238,10 @@ public class StrmTrickplayTaskTests
         SetupCandidates(failing, working);
 
         _mockTrickplayService
-            .Setup(s => s.GenerateAsync(failing, It.IsAny<CancellationToken>()))
+            .Setup(s => s.GenerateAsync(failing, It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("ffmpeg exploded"));
         _mockTrickplayService
-            .Setup(s => s.GenerateAsync(working, It.IsAny<CancellationToken>()))
+            .Setup(s => s.GenerateAsync(working, It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         double? lastProgress = null;
@@ -206,7 +251,7 @@ public class StrmTrickplayTaskTests
         await Task.Delay(100);
 
         _mockTrickplayService.Verify(
-            s => s.GenerateAsync(working, It.IsAny<CancellationToken>()),
+            s => s.GenerateAsync(working, It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.Once);
         lastProgress.Should().Be(100);
     }
@@ -217,7 +262,7 @@ public class StrmTrickplayTaskTests
         SetupCandidates(CreateStrmVideo("/media/one.strm"));
 
         _mockTrickplayService
-            .Setup(s => s.GenerateAsync(It.IsAny<Video>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.GenerateAsync(It.IsAny<Video>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OperationCanceledException());
 
         var act = async () => await _task.ExecuteAsync(new Progress<double>(), CancellationToken.None);

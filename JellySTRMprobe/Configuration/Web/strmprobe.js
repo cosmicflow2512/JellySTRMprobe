@@ -14,6 +14,7 @@ var JellySTRMprobeConfig = {
             document.getElementById('txtDeleteFailureThreshold').value = config.DeleteFailureThreshold;
             document.getElementById('chkEnableStrmTrickplay').checked = config.EnableStrmTrickplay;
             document.getElementById('txtTrickplayMaxItemsPerRun').value = config.TrickplayMaxItemsPerRun;
+            document.getElementById('txtTrickplayTimeoutMinutes').value = config.TrickplayTimeoutMinutes;
 
             self.selectedLibraryIds = config.SelectedLibraryIds || [];
             self.loadLibraries();
@@ -32,6 +33,7 @@ var JellySTRMprobeConfig = {
             config.DeleteFailureThreshold = parseInt(document.getElementById('txtDeleteFailureThreshold').value, 10);
             config.EnableStrmTrickplay = document.getElementById('chkEnableStrmTrickplay').checked;
             config.TrickplayMaxItemsPerRun = parseInt(document.getElementById('txtTrickplayMaxItemsPerRun').value, 10);
+            config.TrickplayTimeoutMinutes = parseInt(document.getElementById('txtTrickplayTimeoutMinutes').value, 10);
             config.SelectedLibraryIds = self.getSelectedLibraryIds();
 
             ApiClient.updatePluginConfiguration(self.pluginUniqueId, config).then(function () {

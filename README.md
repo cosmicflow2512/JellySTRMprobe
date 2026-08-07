@@ -59,12 +59,25 @@ The useful levers all live in **Dashboard > Playback > Trickplay** and are picke
 | Setting | Effect |
 |---------|--------|
 | *Extract keyframes only* | Biggest win — skips decoding every frame |
+| *FFmpeg threads* | Default is 1; raising it to 4 helps a lot while you are still CPU-bound |
 | A single width resolution | Each additional width is another complete pass over the same file |
 | A longer interval | Fewer thumbnails per file |
-| Hardware acceleration | Helps when the CPU is the bottleneck, not the network |
+| Hardware acceleration | Only if the CPU is the bottleneck — see below |
 
-Start with one library selected and a small *Maximum items per run*, then let repeated runs work
-through the rest.
+**Measure before enabling hardware acceleration.** Run `docker stats` on the Jellyfin container
+during a run. 100% means one full core. If ffmpeg sits well below the thread count you gave it
+(e.g. 50% with `-threads 4`), it is waiting on the network and a GPU has nothing to accelerate.
+
+A real measurement from a 2160p HEVC Dolby Vision remux behind a Usenet-backed mount:
+
+| | Defaults | Keyframes only + 4 threads |
+|---|---|---|
+| One film | >127 min, never finished | ~37 min |
+| Bottleneck | CPU — 1 thread decoding every frame | Network |
+
+Once keyframe-only extraction removes the bulk of the decoding, there is little left for a GPU to
+do. Start with one library selected and a small *Maximum items per run*, then let repeated runs
+work through the rest.
 
 ### Catch-Up Mode
 Automatically probes new STRM items as they're added during library scans:
@@ -83,6 +96,7 @@ All settings are accessible from Dashboard > Plugins > JellySTRMprobe:
 | Cooldown | 200ms | 0–5000ms | Delay between probes (prevents upstream overload) |
 | Enable STRM trickplay | Disabled | On/Off | Makes the trickplay task available; hidden and inert while off |
 | Trickplay max items per run | 50 | 0–100000 | Cap per trickplay run; the next run continues with the remaining items (0 = unlimited) |
+| Trickplay timeout per item | 60 min | 0–1440 | Time budget per item; on expiry the item is abandoned and the run continues (0 = no limit) |
 | Libraries | All | Multi-select | Which libraries both tasks work on |
 
 ## Installation
@@ -107,12 +121,12 @@ the release ZIP, and add a new entry to `manifest.json` (see
 
 ### Manual Installation
 
-1. Download `dist/JellySTRMprobe_1.6.0.0.zip` from this repository
+1. Download `dist/JellySTRMprobe_1.6.1.0.zip` from this repository
 2. Extract it into a versioned folder in your Jellyfin plugins directory so that
    `JellySTRMprobe.dll` and `meta.json` sit side by side:
    ```
-   <jellyfin-data>/plugins/JellySTRMprobe_1.6.0.0/JellySTRMprobe.dll
-   <jellyfin-data>/plugins/JellySTRMprobe_1.6.0.0/meta.json
+   <jellyfin-data>/plugins/JellySTRMprobe_1.6.1.0/JellySTRMprobe.dll
+   <jellyfin-data>/plugins/JellySTRMprobe_1.6.1.0/meta.json
    ```
    (On the official Docker image `<jellyfin-data>` is `/config`.)
 3. Restart Jellyfin
@@ -181,6 +195,23 @@ md5sum dist/JellySTRMprobe_<version>.zip
 ## Fork Changes
 
 This is a fork of [firestaerter3/JellySTRMprobe](https://github.com/firestaerter3/JellySTRMprobe), maintained by [cosmicflow2512](https://github.com/cosmicflow2512).
+
+### v1.6.1 — Per-item timeout for trickplay
+
+**What changed:** New setting `TrickplayTimeoutMinutes` (default 60, 0 = no limit).
+`GenerateAsync()` now runs under a linked `CancellationTokenSource` with `CancelAfter`; when the
+budget is spent the item is abandoned with a warning and the run continues with the next one.
+Cancelling the task is also no longer reported as a generation failure.
+
+**Why:** Jellyfin already guards against a *stalled* encoder — `ExtractVideoImagesOnIntervalInternal`
+polls the output directory every `ImageExtractionTimeoutMs` (default 20 s) and kills ffmpeg if no
+new image appeared. What it does not bound is total runtime: an item producing one image every
+19 seconds stays "responsive" indefinitely. In practice a 2160p remux behind a Usenet-backed mount
+ran for 127 minutes without finishing and had to be cancelled by hand.
+
+Both the timeout and the cancellation path have to catch on the token rather than the exception
+type. Killing ffmpeg makes `MediaEncoder` throw `FfmpegException`, not `OperationCanceledException`
+— which is why a manual cancel previously showed up in the log as `Trickplay generation failed`.
 
 ### v1.6.0 — Trickplay is opt-in
 

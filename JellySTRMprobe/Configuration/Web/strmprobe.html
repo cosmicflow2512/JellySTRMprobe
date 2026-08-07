@@ -137,7 +137,23 @@
                                    min="0" max="100000" step="1" />
                             <div class="fieldDescription">
                                 Trickplay extraction streams each file in full. This limit keeps an accidental
-                                run from pulling the entire library through your provider.
+                                run from pulling the entire library through your provider. Each run continues
+                                where the last one stopped, so a small value plus a nightly schedule works
+                                through a large library over time.
+                            </div>
+                        </div>
+
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="txtTrickplayTimeoutMinutes">
+                                Timeout per item (0-1440 minutes, 0 = no limit)
+                            </label>
+                            <input is="emby-input" type="number" id="txtTrickplayTimeoutMinutes"
+                                   min="0" max="1440" step="5" />
+                            <div class="fieldDescription">
+                                Jellyfin already stops an ffmpeg that produces no new images for 20 seconds,
+                                but an item that trickles along slowly can otherwise occupy a run for hours.
+                                When the budget is used up the item is abandoned, logged, and the run moves
+                                on to the next one.
                             </div>
                         </div>
                     </div>
