@@ -16,6 +16,27 @@ public class PluginConfigurationTests
         config.ProbeTimeoutSeconds.Should().Be(60);
         config.ProbeCooldownMs.Should().Be(200);
         config.SelectedLibraryIds.Should().BeEmpty();
+        config.TrickplayMaxItemsPerRun.Should().Be(50);
+    }
+
+    [Fact]
+    public void Validate_ClampsTrickplayMaxItemsPerRun_WhenNegative()
+    {
+        var config = new PluginConfiguration { TrickplayMaxItemsPerRun = -1 };
+
+        config.Validate();
+
+        config.TrickplayMaxItemsPerRun.Should().Be(0);
+    }
+
+    [Fact]
+    public void Validate_KeepsTrickplayMaxItemsPerRun_WhenZero()
+    {
+        var config = new PluginConfiguration { TrickplayMaxItemsPerRun = 0 };
+
+        config.Validate();
+
+        config.TrickplayMaxItemsPerRun.Should().Be(0);
     }
 
     [Fact]

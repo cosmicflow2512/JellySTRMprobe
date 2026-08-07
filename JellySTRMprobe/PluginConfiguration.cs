@@ -51,6 +51,13 @@ public class PluginConfiguration : BasePluginConfiguration
     public Guid[] SelectedLibraryIds { get; set; } = Array.Empty<Guid>();
 
     /// <summary>
+    /// Gets or sets the maximum number of items the trickplay task processes per run.
+    /// Zero means unlimited. Trickplay extraction streams each file in full, so this
+    /// limit keeps an accidental run from pulling the entire library through the provider.
+    /// </summary>
+    public int TrickplayMaxItemsPerRun { get; set; } = 50;
+
+    /// <summary>
     /// Validates and clamps all configuration values to safe ranges.
     /// </summary>
     public void Validate()
@@ -59,5 +66,6 @@ public class PluginConfiguration : BasePluginConfiguration
         ProbeTimeoutSeconds = Math.Clamp(ProbeTimeoutSeconds, 10, 300);
         ProbeCooldownMs = Math.Clamp(ProbeCooldownMs, 0, 5000);
         DeleteFailureThreshold = Math.Clamp(DeleteFailureThreshold, 1, 100);
+        TrickplayMaxItemsPerRun = Math.Clamp(TrickplayMaxItemsPerRun, 0, 100000);
     }
 }

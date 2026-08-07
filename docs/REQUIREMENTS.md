@@ -46,6 +46,29 @@ if (!item.IsShortcut || options.EnableRemoteContentProbe)
 | FR-1.8 | The task SHALL be cancellable via the Dashboard |
 | FR-1.9 | The task SHALL log the count of probed, failed, and skipped items |
 
+### FR-1b: Scheduled Trickplay Task
+
+Jellyfin never generates trickplay for STRM: `BaseVideoResolver` sets `IsShortcut = true` for every
+`.strm`, and `TrickplayManager.CanGenerateTrickplay()` rejects shortcuts, which is the first check
+in `RefreshTrickplayDataAsync()`. The library option *Extract trickplay images* is therefore inert.
+
+| ID | Requirement |
+|----|-------------|
+| FR-1b.1 | The plugin SHALL register a second scheduled task visible under the "STRM Probe" category |
+| FR-1b.2 | The task SHALL select `.strm` items that already carry a duration (`RunTimeTicks` set) |
+| FR-1b.3 | The task SHALL skip items without a duration or without a video stream, and log why |
+| FR-1b.4 | The task SHALL generate tiles via `IMediaEncoder.ExtractVideoImagesOnIntervalAccelerated()` and `ITrickplayManager.CreateTiles()`, bypassing `CanGenerateTrickplay()` |
+| FR-1b.5 | The task SHALL set `TrickplayInfo.ItemId` before calling `SaveTrickplayInfo()` |
+| FR-1b.6 | The task SHALL use the server's `TrickplayOptions` (interval, widths, tile size, quality, hardware acceleration) without duplicating them in plugin config |
+| FR-1b.7 | The task SHALL NOT mutate the live server configuration |
+| FR-1b.8 | The task SHALL skip widths that already have trickplay data, making re-runs cheap |
+| FR-1b.9 | The task SHALL process items sequentially — each item transfers a whole file |
+| FR-1b.10 | The task SHALL have no default trigger and SHALL be run manually until an admin schedules it |
+| FR-1b.11 | The task SHALL report progress (0-100%), be cancellable, and log generated/skipped/failed counts |
+| FR-1b.12 | A failure on one item SHALL NOT abort the run |
+| FR-1b.13 | The task SHALL hand ffmpeg the resolved stream URL, never the `.strm` path, and SHALL NOT require an external ffmpeg wrapper |
+| FR-1b.14 | The task SHALL NOT log stream URLs — STRM targets routinely embed provider credentials |
+
 ### FR-2: Catch-up Mode (Auto-Probe)
 
 | ID | Requirement |
@@ -66,7 +89,8 @@ if (!item.IsShortcut || options.EnableRemoteContentProbe)
 | FR-3.3 | Configurable: Probe parallelism 1-20 (default: 5) |
 | FR-3.4 | Configurable: Per-item probe timeout 10-300 seconds (default: 60) |
 | FR-3.5 | Configurable: Cooldown between probes 0-5000 ms (default: 200) |
-| FR-3.6 | Configurable: Library selection — which libraries to probe (default: all) |
+| FR-3.6 | Configurable: Library selection — which libraries both tasks work on (default: all) |
+| FR-3.8 | Configurable: Trickplay maximum items per run 0-100000 (default: 50, 0 = unlimited) |
 | FR-3.7 | The configuration UI SHALL display a library multi-selector populated from Jellyfin's virtual folders |
 
 ### FR-4: Metadata Preservation

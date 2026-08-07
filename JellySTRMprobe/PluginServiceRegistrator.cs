@@ -17,7 +17,9 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<IProbeService, ProbeService>();
+        serviceCollection.AddSingleton<ITrickplayService, TrickplayService>();
         serviceCollection.AddSingleton<IScheduledTask, ProbeStrmTask>();
+        serviceCollection.AddSingleton<IScheduledTask, StrmTrickplayTask>();
         serviceCollection.AddHostedService<CatchUpEntryPoint>();
     }
 }

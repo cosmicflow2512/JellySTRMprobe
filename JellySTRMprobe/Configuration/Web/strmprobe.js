@@ -12,6 +12,7 @@ var JellySTRMprobeConfig = {
             document.getElementById('txtProbeCooldownMs').value = config.ProbeCooldownMs;
             document.getElementById('chkDeleteFailedStrms').checked = config.DeleteFailedStrms;
             document.getElementById('txtDeleteFailureThreshold').value = config.DeleteFailureThreshold;
+            document.getElementById('txtTrickplayMaxItemsPerRun').value = config.TrickplayMaxItemsPerRun;
 
             self.selectedLibraryIds = config.SelectedLibraryIds || [];
             self.loadLibraries();
@@ -28,6 +29,7 @@ var JellySTRMprobeConfig = {
             config.ProbeCooldownMs = parseInt(document.getElementById('txtProbeCooldownMs').value, 10);
             config.DeleteFailedStrms = document.getElementById('chkDeleteFailedStrms').checked;
             config.DeleteFailureThreshold = parseInt(document.getElementById('txtDeleteFailureThreshold').value, 10);
+            config.TrickplayMaxItemsPerRun = parseInt(document.getElementById('txtTrickplayMaxItemsPerRun').value, 10);
             config.SelectedLibraryIds = self.getSelectedLibraryIds();
 
             ApiClient.updatePluginConfiguration(self.pluginUniqueId, config).then(function () {
@@ -69,53 +71,68 @@ var JellySTRMprobeConfig = {
 
     selectedLibraryIds: [],
 
+    taskKeys: ['StrmProbeMediaInfo', 'StrmTrickplayGeneration'],
+
     loadSchedule: function () {
+        var self = this;
+
         ApiClient.getScheduledTasks().then(function (tasks) {
-            var task = tasks.find(function (t) { return t.Key === 'StrmProbeMediaInfo'; });
-            if (!task) { return; }
+            var ourTasks = self.taskKeys
+                .map(function (key) {
+                    return tasks.find(function (t) { return t.Key === key; });
+                })
+                .filter(function (t) { return !!t; });
+
+            if (ourTasks.length === 0) { return; }
 
             var section = document.getElementById('scheduleSection');
             var container = document.getElementById('scheduleStatus');
             section.style.display = '';
 
-            var lines = [];
-
-            // Triggers
-            if (task.Triggers && task.Triggers.length > 0) {
-                var triggerDescs = task.Triggers.map(function (tr) {
-                    if (tr.Type === 'DailyTrigger') {
-                        return 'Daily at ' + JellySTRMprobeConfig.ticksToTime(tr.TimeOfDayTicks);
-                    } else if (tr.Type === 'IntervalTrigger') {
-                        var hours = tr.IntervalTicks / 36000000000;
-                        return 'Every ' + hours + ' hour' + (hours !== 1 ? 's' : '');
-                    } else if (tr.Type === 'StartupTrigger') {
-                        return 'On startup';
-                    } else if (tr.Type === 'WeeklyTrigger') {
-                        return tr.DayOfWeek + ' at ' + JellySTRMprobeConfig.ticksToTime(tr.TimeOfDayTicks);
-                    }
-                    return tr.Type;
-                });
-                lines.push('<b>Schedule:</b> ' + triggerDescs.join(', '));
-            } else {
-                lines.push('<b>Schedule:</b> No triggers configured');
-            }
-
-            // State
-            lines.push('<b>Status:</b> ' + task.State);
-
-            // Last run
-            if (task.LastExecutionResult) {
-                var r = task.LastExecutionResult;
-                var endDate = new Date(r.EndTimeUtc);
-                var timeStr = endDate.toLocaleString();
-                var statusBadge = r.Status === 'Completed'
-                    ? '<span style="color:#4caf50">' + r.Status + '</span>'
-                    : '<span style="color:#f44336">' + r.Status + '</span>';
-                lines.push('<b>Last run:</b> ' + timeStr + ' — ' + statusBadge);
-            }
-
-            container.innerHTML = lines.join('<br/>');
+            container.innerHTML = ourTasks.map(function (task) {
+                return self.describeTask(task);
+            }).join('<div style="height: 0.75em;"></div>');
         });
+    },
+
+    describeTask: function (task) {
+        var lines = ['<b>' + task.Name + '</b>'];
+
+        // Triggers
+        if (task.Triggers && task.Triggers.length > 0) {
+            var triggerDescs = task.Triggers.map(function (tr) {
+                if (tr.Type === 'DailyTrigger') {
+                    return 'Daily at ' + JellySTRMprobeConfig.ticksToTime(tr.TimeOfDayTicks);
+                } else if (tr.Type === 'IntervalTrigger') {
+                    var hours = tr.IntervalTicks / 36000000000;
+                    return 'Every ' + hours + ' hour' + (hours !== 1 ? 's' : '');
+                } else if (tr.Type === 'StartupTrigger') {
+                    return 'On startup';
+                } else if (tr.Type === 'WeeklyTrigger') {
+                    return tr.DayOfWeek + ' at ' + JellySTRMprobeConfig.ticksToTime(tr.TimeOfDayTicks);
+                }
+                return tr.Type;
+            });
+            lines.push('Schedule: ' + triggerDescs.join(', '));
+        } else {
+            lines.push('Schedule: No triggers configured (run manually)');
+        }
+
+        // State
+        lines.push('Status: ' + task.State);
+
+        // Last run
+        if (task.LastExecutionResult) {
+            var r = task.LastExecutionResult;
+            var endDate = new Date(r.EndTimeUtc);
+            var timeStr = endDate.toLocaleString();
+            var statusBadge = r.Status === 'Completed'
+                ? '<span style="color:#4caf50">' + r.Status + '</span>'
+                : '<span style="color:#f44336">' + r.Status + '</span>';
+            lines.push('Last run: ' + timeStr + ' — ' + statusBadge);
+        }
+
+        return lines.join('<br/>');
     },
 
     ticksToTime: function (ticks) {

@@ -26,6 +26,25 @@ A scheduled task (Dashboard > Scheduled Tasks > **Probe STRM Media Info**) that:
 - Runs daily at 4:00 AM by default (customizable)
 - Reports progress and is cancellable from the Dashboard
 
+### Trickplay Task
+A second scheduled task (Dashboard > Scheduled Tasks > **Generate STRM Trickplay**) that creates
+the scrubbing preview tiles Jellyfin refuses to generate for STRM:
+- Jellyfin's resolver marks every `.strm` as `IsShortcut`, and `TrickplayManager.CanGenerateTrickplay()`
+  returns `false` for shortcuts — so the library option *Extract trickplay images* silently does nothing
+- This task calls the same pipeline directly
+  (`IMediaEncoder.ExtractVideoImagesOnIntervalAccelerated` → `ITrickplayManager.CreateTiles` →
+  `SaveTrickplayInfo`), bypassing that gate
+- Uses the server's own **Dashboard > Playback > Trickplay** settings (interval, widths, tile size,
+  hardware acceleration), so there is nothing to configure twice
+- Skips widths that already have tiles, so re-running is cheap
+- **No default trigger** — run it manually, or add a schedule once you're happy with it
+
+> **Run the probe task first.** Trickplay generation needs a duration and a video stream, which is
+> exactly what **Probe STRM Media Info** supplies. Items without them are skipped and logged.
+
+> **Bandwidth warning.** Extracting thumbnails streams each file in full. Start with a single
+> library selected and a small *Maximum items per run*.
+
 ### Catch-Up Mode
 Automatically probes new STRM items as they're added during library scans:
 - Subscribes to Jellyfin's `ItemAdded` event
@@ -41,7 +60,8 @@ All settings are accessible from Dashboard > Plugins > JellySTRMprobe:
 | Parallelism | 5 | 1–20 | Concurrent probe operations |
 | Timeout | 60s | 10–300s | Per-item probe timeout |
 | Cooldown | 200ms | 0–5000ms | Delay between probes (prevents upstream overload) |
-| Libraries | All | Multi-select | Which libraries to probe |
+| Trickplay max items per run | 50 | 0–100000 | Cap for the trickplay task (0 = unlimited) |
+| Libraries | All | Multi-select | Which libraries both tasks work on |
 
 ## Installation
 
@@ -65,12 +85,12 @@ the release ZIP, and add a new entry to `manifest.json` (see
 
 ### Manual Installation
 
-1. Download `dist/JellySTRMprobe_1.4.0.0.zip` from this repository
+1. Download `dist/JellySTRMprobe_1.5.0.0.zip` from this repository
 2. Extract it into a versioned folder in your Jellyfin plugins directory so that
    `JellySTRMprobe.dll` and `meta.json` sit side by side:
    ```
-   <jellyfin-data>/plugins/JellySTRMprobe_1.4.0.0/JellySTRMprobe.dll
-   <jellyfin-data>/plugins/JellySTRMprobe_1.4.0.0/meta.json
+   <jellyfin-data>/plugins/JellySTRMprobe_1.5.0.0/JellySTRMprobe.dll
+   <jellyfin-data>/plugins/JellySTRMprobe_1.5.0.0/meta.json
    ```
    (On the official Docker image `<jellyfin-data>` is `/config`.)
 3. Restart Jellyfin
@@ -139,6 +159,34 @@ md5sum dist/JellySTRMprobe_<version>.zip
 ## Fork Changes
 
 This is a fork of [firestaerter3/JellySTRMprobe](https://github.com/firestaerter3/JellySTRMprobe), maintained by [cosmicflow2512](https://github.com/cosmicflow2512).
+
+### v1.5.0 — Trickplay for STRM items
+
+**What changed:** A second scheduled task, **Generate STRM Trickplay**, now produces the scrubbing
+preview tiles that Jellyfin will not generate for STRM. The new
+`JellySTRMprobe/Service/TrickplayService.cs` collects shortcut videos that already carry a duration
+and drives the server's own pipeline directly —
+`IMediaEncoder.ExtractVideoImagesOnIntervalAccelerated` → `ITrickplayManager.CreateTiles` →
+`SaveTrickplayInfo` — using the widths, interval, tile size and hardware settings from
+**Dashboard > Playback > Trickplay**. `JellySTRMprobe/Tasks/StrmTrickplayTask.cs` wraps it as a
+scheduled task with no default trigger, and a new `TrickplayMaxItemsPerRun` setting (default 50)
+caps a single run. Covered by tests in `JellySTRMprobe.Tests/Service/TrickplayServiceTests.cs` and
+`JellySTRMprobe.Tests/Tasks/StrmTrickplayTaskTests.cs`.
+
+**Why:** The exclusion is hard-coded in the server and not configurable.
+`BaseVideoResolver` sets `video.IsShortcut = true` for every `.strm`, and `IsShortcut` is the third
+check inside `TrickplayManager.CanGenerateTrickplay()` — which is the *first* condition in
+`RefreshTrickplayDataAsync()`. So the library switch *Extract trickplay images* is inert for STRM,
+ffmpeg is never invoked, and pre-placed tiles are never imported because
+`DiscoverExistingTrickplayAsync()` only runs past that return. Fixing the duration (what v1.3.0 did)
+does not help: the `RunTimeTicks` gate sits *behind* the `IsShortcut` gate. Calling the pipeline
+from a plugin skips both, with no server fork or patch.
+
+Two details make this work on a stock server. `BaseItem.GetVersionInfo()` already rewrites a
+shortcut's media source to `Video.ShortcutPath` — the actual stream URL, with the protocol set
+accordingly — so the task hands ffmpeg a URL and never the `.strm` file, and no ffmpeg wrapper is
+required. And `CreateTiles()` does not populate `TrickplayInfo.ItemId`; the task sets it before
+saving, otherwise the tiles land on disk and no client ever finds them.
 
 ### v1.4.0 — Catch-up mode reprobes half-items too
 

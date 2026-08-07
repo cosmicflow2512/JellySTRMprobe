@@ -53,6 +53,35 @@
 | TC-2.4 | Execute skips when no items found | 0 unprobed items | Progress reports 100%, no ProbeBatchAsync call |
 | TC-2.5 | Execute passes config values | Config: parallelism=10, timeout=120, cooldown=500 | ProbeBatchAsync called with matching params |
 
+### 2b. TrickplayService Tests
+
+Only `GetCandidates()` is unit tested. `GenerateAsync()` depends on `IMediaEncoder` and a real
+ffmpeg process and is covered by the manual scenario IT-6 instead.
+
+| ID | Test Case | Setup | Expected |
+|----|-----------|-------|----------|
+| TC-2b.1 | Returns shortcut videos with a duration | 1 shortcut Video, RunTimeTicks set | Item returned |
+| TC-2b.2 | Skips non-video items | BaseItem that is not a Video | Empty result |
+| TC-2b.3 | Skips non-shortcut videos | Video with IsShortcut=false | Empty result |
+| TC-2b.4 | Skips videos without a usable duration | RunTimeTicks null / 0 | Empty result |
+| TC-2b.5 | Skips unresolvable items | GetItemById throws for one ID | Other item still returned |
+| TC-2b.6 | Respects maxItems | 5 candidates, maxItems=2 | 2 items returned |
+| TC-2b.7 | maxItems=0 means unlimited | 5 candidates, maxItems=0 | 5 items returned |
+| TC-2b.8 | No library IDs leaves AncestorIds unset | Empty Guid[] | Query.AncestorIds empty |
+| TC-2b.9 | Library IDs set AncestorIds | One library ID | Query.AncestorIds contains it |
+
+### 2c. StrmTrickplayTask Tests
+
+| ID | Test Case | Setup | Expected |
+|----|-----------|-------|----------|
+| TC-2c.1 | Task has correct metadata | — | Name="Generate STRM Trickplay", Key="StrmTrickplayGeneration", Category="STRM Probe" |
+| TC-2c.2 | No default trigger | — | GetDefaultTriggers() is empty |
+| TC-2c.3 | Execute skips when no candidates | 0 candidates | Progress reports 100%, GenerateAsync never called |
+| TC-2c.4 | Execute generates for every candidate | 3 candidates | GenerateAsync called once per item |
+| TC-2c.5 | Execute passes configured limit and libraries | Config: 1 library, max=7 | GetCandidates called with matching params |
+| TC-2c.6 | One failing item does not abort the run | Item 1 throws, item 2 succeeds | Item 2 still processed, progress reaches 100% |
+| TC-2c.7 | Cancellation propagates | GenerateAsync throws OperationCanceledException | Exception rethrown to the task runner |
+
 ### 3. CatchUpEntryPoint Tests
 
 | ID | Test Case | Setup | Expected |
@@ -127,6 +156,25 @@ These tests require a running Jellyfin instance with STRM files.
 | 3 | Cancel task mid-run | Task stops cleanly, partial results preserved |
 | 4 | Restart Jellyfin during catch-up | Catch-up re-subscribes on startup |
 
+### IT-6: STRM Trickplay Generation
+
+Covers `TrickplayService.GenerateAsync()`, which has no unit test — it needs a real ffmpeg
+and a reachable stream.
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Select a single library and set *Maximum items per run* to a small number | Setting saved |
+| 2 | Run "Probe STRM Media Info" first | Items have duration and a video stream |
+| 3 | Navigate to Dashboard > Scheduled Tasks | "Generate STRM Trickplay" visible under "STRM Probe", no schedule |
+| 4 | Click Run | "Found N STRM videos with usable media info" logged |
+| 5 | Watch the log | "Creating trickplay files at {Width} width" then "Finished creation of trickplay files" per item |
+| 6 | Confirm ffmpeg was actually invoked | `image2` / `mjpeg` calls appear in the ffmpeg log (they were absent before) |
+| 7 | Check the tile directory | JPEG tiles exist under the trickplay directory |
+| 8 | Hover the seekbar of a STRM movie in the web client | Scrubbing previews appear |
+| 9 | Run the task a second time | Items with existing tiles are skipped, run finishes quickly |
+| 10 | Run against items that were never probed | Items skipped with "run the probe task first", no crash |
+| 11 | Grep the log for the stream URL | No provider credentials logged |
+
 ### IT-5: Dispatcharr Compatibility
 
 | Step | Action | Expected Result |
@@ -141,6 +189,8 @@ These tests require a running Jellyfin instance with STRM files.
 |-----------|----------------|
 | ProbeService | 90%+ (core logic) |
 | ProbeStrmTask | 80%+ (task orchestration) |
+| TrickplayService | `GetCandidates()` only — `GenerateAsync()` needs a real ffmpeg (see IT-6) |
+| StrmTrickplayTask | 80%+ (task orchestration) |
 | CatchUpEntryPoint | 70%+ (event handling, hard to test timers) |
 | PluginConfiguration | 100% (simple model) |
 | Plugin | 100% (simple entry point) |
