@@ -12,6 +12,7 @@ var JellySTRMprobeConfig = {
             document.getElementById('txtProbeCooldownMs').value = config.ProbeCooldownMs;
             document.getElementById('chkDeleteFailedStrms').checked = config.DeleteFailedStrms;
             document.getElementById('txtDeleteFailureThreshold').value = config.DeleteFailureThreshold;
+            document.getElementById('chkEnableStrmTrickplay').checked = config.EnableStrmTrickplay;
             document.getElementById('txtTrickplayMaxItemsPerRun').value = config.TrickplayMaxItemsPerRun;
 
             self.selectedLibraryIds = config.SelectedLibraryIds || [];
@@ -29,11 +30,15 @@ var JellySTRMprobeConfig = {
             config.ProbeCooldownMs = parseInt(document.getElementById('txtProbeCooldownMs').value, 10);
             config.DeleteFailedStrms = document.getElementById('chkDeleteFailedStrms').checked;
             config.DeleteFailureThreshold = parseInt(document.getElementById('txtDeleteFailureThreshold').value, 10);
+            config.EnableStrmTrickplay = document.getElementById('chkEnableStrmTrickplay').checked;
             config.TrickplayMaxItemsPerRun = parseInt(document.getElementById('txtTrickplayMaxItemsPerRun').value, 10);
             config.SelectedLibraryIds = self.getSelectedLibraryIds();
 
             ApiClient.updatePluginConfiguration(self.pluginUniqueId, config).then(function () {
                 Dashboard.processPluginConfigurationUpdateResult();
+
+                // The trickplay task appears/disappears with its setting, so refresh the panel.
+                self.loadSchedule();
             });
         });
     },
@@ -76,12 +81,15 @@ var JellySTRMprobeConfig = {
     loadSchedule: function () {
         var self = this;
 
-        ApiClient.getScheduledTasks().then(function (tasks) {
+        // isHidden:false mirrors what the dashboard requests, so a task switched off in the
+        // settings drops out of this panel too. The client-side check is a fallback in case
+        // the ApiClient does not forward the query parameter.
+        ApiClient.getScheduledTasks({ isHidden: false }).then(function (tasks) {
             var ourTasks = self.taskKeys
                 .map(function (key) {
                     return tasks.find(function (t) { return t.Key === key; });
                 })
-                .filter(function (t) { return !!t; });
+                .filter(function (t) { return !!t && t.IsHidden !== true; });
 
             if (ourTasks.length === 0) { return; }
 

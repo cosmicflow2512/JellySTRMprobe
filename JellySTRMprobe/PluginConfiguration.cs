@@ -51,6 +51,13 @@ public class PluginConfiguration : BasePluginConfiguration
     public Guid[] SelectedLibraryIds { get; set; } = Array.Empty<Guid>();
 
     /// <summary>
+    /// Gets or sets a value indicating whether the STRM trickplay task is available.
+    /// Off by default: every run streams each file in full, which is slow and expensive.
+    /// While disabled the task is hidden from the dashboard and refuses to run.
+    /// </summary>
+    public bool EnableStrmTrickplay { get; set; } = false;
+
+    /// <summary>
     /// Gets or sets the maximum number of items the trickplay task processes per run.
     /// Zero means unlimited. Trickplay extraction streams each file in full, so this
     /// limit keeps an accidental run from pulling the entire library through the provider.

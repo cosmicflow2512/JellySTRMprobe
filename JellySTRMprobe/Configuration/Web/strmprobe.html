@@ -112,6 +112,23 @@
                             so run <b>Probe STRM Media Info</b> first.
                         </p>
 
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input is="emby-checkbox" type="checkbox" id="chkEnableStrmTrickplay" />
+                                <span>Enable STRM trickplay</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">
+                                Off by default. Generating trickplay streams every file in full, so a run
+                                takes a long time and moves a lot of data through your provider. While this
+                                is off, the task is hidden from Scheduled Tasks and will not run.
+                                <br /><br />
+                                To speed it up, adjust <b>Dashboard &gt; Playback &gt; Trickplay</b>: enable
+                                <i>Extract keyframes only</i> (biggest win), keep a single width resolution
+                                (each extra width is another full pass over the file), raise the interval,
+                                and enable hardware acceleration if you have it.
+                            </div>
+                        </div>
+
                         <div class="inputContainer">
                             <label class="inputLabel inputLabelUnfocused" for="txtTrickplayMaxItemsPerRun">
                                 Maximum items per run (0 = unlimited)

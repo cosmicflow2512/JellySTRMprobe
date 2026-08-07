@@ -43,13 +43,29 @@ public class StrmTrickplayTask : IScheduledTask, IConfigurableScheduledTask
     public string Category => "STRM Probe";
 
     /// <inheritdoc />
-    public bool IsHidden => false;
+    /// <remarks>
+    /// Evaluated by the server on every /ScheduledTasks request, so flipping the setting
+    /// shows or hides the task without a restart.
+    /// </remarks>
+    public bool IsHidden => !TrickplayEnabled;
 
     /// <inheritdoc />
-    public bool IsEnabled => true;
+    /// <remarks>
+    /// Blocks any trigger an admin may have added while the feature was on. It does not
+    /// block a manual run — <see cref="ExecuteAsync"/> guards that case separately.
+    /// </remarks>
+    public bool IsEnabled => TrickplayEnabled;
 
     /// <inheritdoc />
     public bool IsLogged => true;
+
+    /// <summary>
+    /// Gets a value indicating whether trickplay generation is switched on.
+    /// Falls back to <c>false</c> when the plugin instance is not available: this is read
+    /// while the server builds the task list, where throwing would break the whole endpoint.
+    /// </summary>
+    private static bool TrickplayEnabled =>
+        Plugin.InstanceOrNull?.Configuration.EnableStrmTrickplay ?? false;
 
     /// <inheritdoc />
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
@@ -63,11 +79,23 @@ public class StrmTrickplayTask : IScheduledTask, IConfigurableScheduledTask
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
         var config = Plugin.Instance.Configuration;
+
+        // IsEnabled only stops trigger-fired runs; a manual start reaches this directly.
+        if (!config.EnableStrmTrickplay)
+        {
+            _logger.LogInformation("STRM trickplay is disabled in the plugin configuration");
+            progress.Report(100);
+            return;
+        }
+
         config.Validate();
 
         _logger.LogInformation("Starting STRM trickplay task");
 
-        var candidates = _trickplayService.GetCandidates(config.SelectedLibraryIds, config.TrickplayMaxItemsPerRun);
+        var candidates = await _trickplayService.GetCandidatesAsync(
+            config.SelectedLibraryIds,
+            config.TrickplayMaxItemsPerRun,
+            cancellationToken).ConfigureAwait(false);
 
         if (candidates.Count == 0)
         {

@@ -37,6 +37,13 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     /// </summary>
     public static Plugin Instance => _instance ?? throw new InvalidOperationException("Plugin instance not available");
 
+    /// <summary>
+    /// Gets the current plugin instance, or <c>null</c> if it is not available yet.
+    /// Used where throwing would take down an unrelated server endpoint — scheduled task
+    /// properties like IsHidden are evaluated on every /ScheduledTasks request.
+    /// </summary>
+    internal static Plugin? InstanceOrNull => _instance;
+
     private static PluginPageInfo CreateStatic(string name) => new()
     {
         Name = name,
