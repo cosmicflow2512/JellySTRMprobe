@@ -121,20 +121,35 @@ the release ZIP, and add a new entry to `manifest.json` (see
 
 ### Manual Installation
 
-1. Download `dist/JellySTRMprobe_1.6.1.0.zip` from this repository
+1. Download the ZIP matching your server (see [Requirements](#requirements)) from `dist/`:
+   `JellySTRMprobe_2.0.0.0.zip` for Jellyfin 12, `JellySTRMprobe_1.6.1.0.zip` for 10.11.x
 2. Extract it into a versioned folder in your Jellyfin plugins directory so that
    `JellySTRMprobe.dll` and `meta.json` sit side by side:
    ```
-   <jellyfin-data>/plugins/JellySTRMprobe_1.6.1.0/JellySTRMprobe.dll
-   <jellyfin-data>/plugins/JellySTRMprobe_1.6.1.0/meta.json
+   <jellyfin-data>/plugins/JellySTRMprobe_2.0.0.0/JellySTRMprobe.dll
+   <jellyfin-data>/plugins/JellySTRMprobe_2.0.0.0/meta.json
    ```
    (On the official Docker image `<jellyfin-data>` is `/config`.)
 3. Restart Jellyfin
 
 ## Requirements
 
-- Jellyfin **10.11.0** or later
-- .NET 9.0
+Two builds are published side by side. The catalog hands your server the right one
+automatically — `InstallationManager` drops any catalog entry whose `targetAbi` is newer than the
+running server, so a 10.11 server never sees the Jellyfin 12 build.
+
+| Your Jellyfin | Plugin version | targetAbi | Framework |
+|---------------|----------------|-----------|-----------|
+| **12.0** and later | **2.0.0.0** | 12.0.0.0 | .NET 10 |
+| **10.11.x** | **1.6.1.0** | 10.11.0.0 | .NET 9 |
+
+Both carry identical functionality. The split exists only because Jellyfin 12 moved to .NET 10, and
+a .NET 9 assembly cannot load into a .NET 10 host.
+
+> **Installing by hand?** Then the matrix is on you — picking the wrong build gives you a plugin
+> that either fails to load or shows up as *Malfunctioned*. Through the catalog this cannot happen.
+
+The 10.11 build stays available indefinitely, but new development happens on the Jellyfin 12 line.
 
 ## Building from Source
 
@@ -195,6 +210,29 @@ md5sum dist/JellySTRMprobe_<version>.zip
 ## Fork Changes
 
 This is a fork of [firestaerter3/JellySTRMprobe](https://github.com/firestaerter3/JellySTRMprobe), maintained by [cosmicflow2512](https://github.com/cosmicflow2512).
+
+### v2.0.0 — Jellyfin 12.0
+
+**What changed:** Retargeted to .NET 10 and `Jellyfin.Controller`/`Jellyfin.Model` 12.0.0. Three
+lines of build configuration, no source changes: `<TargetFramework>` in both projects, the two
+package references, and `CA1873` added to `jellyfin.ruleset`. The CI workflows moved to
+`dotnet-version: 10.0.*`. Published as 2.0.0.0 with `targetAbi: 12.0.0.0` next to the unchanged
+1.6.1.0 entry for 10.11.x.
+
+**Why:** Jellyfin 12 targets .NET 10, and a .NET 9 assembly cannot load into a .NET 10 host —
+that, not the API surface, is the whole reason a separate build is needed. Every Jellyfin API this
+plugin touches is byte-identical between 10.11.0 and 12.0.0, verified against the shipped
+assemblies before porting: `ExtractVideoImagesOnIntervalAccelerated` (all 14 parameters), the
+complete `ITrickplayManager` interface, `TrickplayInfo` still in
+`Jellyfin.Database.Implementations.Entities`, `IScheduledTask`/`IConfigurableScheduledTask`, and
+all twelve `TrickplayOptions` properties. The concern noted in the v1.5.0 entry — that
+`ExtractVideoImagesOnIntervalAccelerated` is public but not a promised-stable plugin API — did not
+materialise across a major version.
+
+`CA1873` ("evaluation of this argument may be expensive if logging is disabled") is new in the
+.NET 10 analyzers and fired 27 times. It is disabled for the same reason `CA1848` already was:
+this project logs through direct `ILogger` calls with structured arguments rather than
+pre-compiled `LoggerMessage` delegates.
 
 ### v1.6.1 — Per-item timeout for trickplay
 

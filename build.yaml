@@ -1,8 +1,8 @@
 name: "JellySTRMprobe"
 guid: "b8f5e3a1-d4c7-4f2e-9a6b-1c8d3e5f7a9b"
-version: "1.6.1.0"
-targetAbi: "10.11.0.0"
-framework: "net9.0"
+version: "2.0.0.0"
+targetAbi: "12.0.0.0"
+framework: "net10.0"
 owner: "cosmicflow2512"
 overview: "Probe STRM files to extract media info (codec, resolution, duration, audio)"
 description: |
@@ -24,6 +24,12 @@ category: "General"
 artifacts:
   - "JellySTRMprobe.dll"
 changelog: |
+  ## v2.0.0.0
+  - Jellyfin 12.0 support. Built against Jellyfin.Controller/Model 12.0.0 and .NET 10,
+    which Jellyfin 12 requires. No functional change — every Jellyfin API this plugin
+    uses is byte-identical between 10.11.0 and 12.0.0
+  - Stay on 1.6.1.0 for Jellyfin 10.11.x. Both versions live in the same catalog; the
+    server picks the one matching its targetAbi, so nothing has to be chosen by hand
   ## v1.6.1.0
   - New setting "Timeout per item" (default 60 minutes, 0 = no limit) for the trickplay
     task. Jellyfin already kills an ffmpeg that stops producing images, but an item that
