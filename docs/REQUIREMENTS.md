@@ -132,8 +132,9 @@ in `RefreshTrickplayDataAsync()`. The library option *Extract trickplay images* 
 
 | ID | Requirement |
 |----|-------------|
-| NFR-3.1 | Target: .NET 9.0 |
-| NFR-3.2 | Target: Jellyfin 10.11.0+ |
+| NFR-3.1 | Target: .NET 10.0 (Jellyfin 12 requires it) |
+| NFR-3.2 | Target: Jellyfin 12.0+. The 1.6.1.0 build on .NET 9 remains published for 10.11.x |
+| NFR-3.2a | Both builds SHALL stay in the same catalog; `InstallationManager` drops entries whose `targetAbi` exceeds the server version, so no manual choice is required |
 | NFR-3.3 | The plugin SHALL work alongside other Jellyfin plugins without conflicts |
 | NFR-3.4 | The plugin SHALL work with any STRM URL format (HTTP, HTTPS, local file paths) |
 

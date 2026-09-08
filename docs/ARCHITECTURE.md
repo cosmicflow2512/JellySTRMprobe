@@ -379,7 +379,7 @@ at the clamped width and would never match.
 
 | Component | Version |
 |-----------|---------|
-| .NET | 9.0 |
-| Jellyfin.Controller | 10.11.0 |
-| Jellyfin.Model | 10.11.0 |
+| .NET | 10.0 |
+| Jellyfin.Controller | 12.0.0 |
+| Jellyfin.Model | 12.0.0 |
 | StyleCop.Analyzers | 1.2.0-beta.556 |

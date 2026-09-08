@@ -87,19 +87,19 @@ The plugin calls `IProviderManager.RefreshSingleItem()` with `EnableRemoteConten
 ## Gotchas
 
 - **`InternalItemsQuery` on 10.11.x:** `TopParentIds` and `MediaTypes` filters silently return 0 results (EF Core). Use `AncestorIds`, which goes through a join table and works. Both services do this.
-- **Analyzers:** `TreatWarningsAsErrors` + `AnalysisMode=AllEnabledByDefault` + StyleCop, and there is no `NoWarn`. No file headers (SA1633 off), XML docs on every public member (CS1591), constant log templates with PascalCase placeholders (CA2254/CA1727 are errors), `.ConfigureAwait(false)` everywhere, `CultureInfo.InvariantCulture` on formatting (CA1305 is an error).
+- **Analyzers:** `TreatWarningsAsErrors` + `AnalysisMode=AllEnabledByDefault` + StyleCop, and there is no `NoWarn`. No file headers (SA1633 off), XML docs on every public member (CS1591), constant log templates with PascalCase placeholders (CA2254/CA1727 are errors), `.ConfigureAwait(false)` everywhere, `CultureInfo.InvariantCulture` on formatting (CA1305 is an error). The .NET 10 SDK added CA1873 (expensive log arguments) — disabled in `jellyfin.ruleset` for the same reason as CA1848, since this project logs through direct `ILogger` calls rather than `LoggerMessage` delegates.
 - **Never log stream URLs** — STRM targets routinely embed provider credentials.
 - **Trickplay is off by default and needs three switches, not one:** `IsHidden` (task list — `ScheduledTasksController.GetTasks()` re-reads it per request, so no restart needed), `IsEnabled` (`ScheduledTaskWorker.OnTriggerTriggered()` — blocks triggers only), and a guard in `ExecuteAsync` (a manual run goes straight to `QueueScheduledTask` and consults neither). `IsHidden`/`IsEnabled` must read `Plugin.InstanceOrNull`, not `Plugin.Instance` — a throw there breaks the whole `/ScheduledTasks` endpoint.
 - **Two timeouts, and neither raises `OperationCanceledException`:** Jellyfin's `ImageExtractionTimeoutMs` (default 20 s) only catches a *stalled* ffmpeg — no new JPEG in the window. Total runtime is unbounded, which is what `TrickplayTimeoutMinutes` covers. Killing ffmpeg throws `FfmpegException`, so both the timeout handler and the task's cancel handling must test the **token**, not the exception type.
 - **`TrickplayMaxItemsPerRun` and the done-filter:** completed items must be filtered out *before* the cap is applied, otherwise every run re-selects the same first N items and the library is never worked through. "Done" means *any* trickplay row — matching on configured widths stalls for videos narrower than a configured width, whose tiles are stored at the clamped width.
 
 ## Target Framework
-- .NET 9.0
-- Jellyfin 10.11.0+
+- .NET 10.0
+- Jellyfin 12.0+ (the 1.6.1.0 build on .NET 9 / Jellyfin 10.11 stays published in parallel)
 
 ## Key Dependencies
-- Jellyfin.Controller 10.11.0
-- Jellyfin.Model 10.11.0
+- Jellyfin.Controller 12.0.0
+- Jellyfin.Model 12.0.0
 
 ## Related Projects
 
