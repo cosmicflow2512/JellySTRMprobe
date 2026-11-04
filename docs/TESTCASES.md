@@ -43,6 +43,26 @@
 | TC-1.3.6 | Cancellation stops batch processing | Cancel after 2nd item | Returns partial results, no more probes |
 | TC-1.3.7 | Empty list returns zero counts | 0 items | (Probed=0, Failed=0, Skipped=0) |
 
+### 1.4 ProbeBatchAsync — failure breaker
+
+| ID | Test Case | Setup | Expected |
+|----|-----------|-------|----------|
+| TC-1.4.1 | Aborts after N consecutive failures | 20 items, all fail, threshold 3 | Aborted, 3 failed, 17 skipped |
+| TC-1.4.2 | Threshold 0 never aborts | 8 items, all fail, threshold 0 | 8 failed, 0 skipped |
+| TC-1.4.3 | A success resets the streak | fail, fail, succeed, fail, fail, threshold 3 | Not aborted, run completes |
+| TC-1.4.4 | Aborted run still reports 100% progress | 10 items, all fail, threshold 2 | Progress reaches 100 |
+
+### 1.5 FfprobeReaper Tests
+
+The reaper kills processes it did not start, so the safety guards matter more than the happy path.
+
+| ID | Test Case | Setup | Expected |
+|----|-----------|-------|----------|
+| TC-1.5.1 | Refuses short or empty URLs | null, "", "http://a", "ffprobe", a path | No matches — a short needle would hit unrelated command lines |
+| TC-1.5.2 | Does not match the test process itself | Unmatchable needle | Own PID absent |
+| TC-1.5.3 | Spares processes present in the snapshot | PID already in `existingBefore` | Nothing killed, process still alive |
+| TC-1.5.4 | Kills a process that appeared since | Real process spawned with the URL on its command line, empty snapshot | Killed, exits within 10 s (Linux only) |
+
 ### 2. ProbeStrmTask Tests
 
 | ID | Test Case | Setup | Expected |

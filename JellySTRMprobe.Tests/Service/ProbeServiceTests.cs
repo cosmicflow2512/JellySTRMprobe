@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -36,6 +37,7 @@ public class ProbeServiceTests
             _mockProviderManager.Object,
             _mockLibraryManager.Object,
             _mockFileSystem.Object,
+            new FfprobeReaper(new Mock<ILogger<FfprobeReaper>>().Object),
             _mockLogger.Object);
     }
 
@@ -176,11 +178,113 @@ public class ProbeServiceTests
         var progress = new Progress<double>();
 
         var result = await _probeService.ProbeBatchAsync(
-            items, 5, 60, 0, progress, CancellationToken.None);
+            items, 5, 60, 0, 0, progress, CancellationToken.None);
 
         result.Probed.Should().Be(5);
         result.Failed.Should().Be(0);
         result.FailedItems.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ProbeBatchAsync_AbortsAfterConsecutiveFailures()
+    {
+        // The incident this guards against: the provider was down, all items timed out, and
+        // every timeout leaked an ffprobe process until the host ran out of memory.
+        var items = Enumerable.Range(1, 20)
+            .Select(i => CreateMockItem($"Movie {i}", $"/media/{i}.strm"))
+            .ToList();
+
+        SetupRefreshAlwaysFails();
+
+        var result = await _probeService.ProbeBatchAsync(
+            items, 1, 60, 0, 3, new Progress<double>(), CancellationToken.None);
+
+        result.Aborted.Should().BeTrue();
+        result.Failed.Should().Be(3);
+        result.Skipped.Should().Be(17);
+        result.FailedItems.Should().HaveCount(3);
+        result.Probed.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ProbeBatchAsync_ZeroThreshold_NeverAborts()
+    {
+        var items = Enumerable.Range(1, 8)
+            .Select(i => CreateMockItem($"Movie {i}", $"/media/{i}.strm"))
+            .ToList();
+
+        SetupRefreshAlwaysFails();
+
+        var result = await _probeService.ProbeBatchAsync(
+            items, 1, 60, 0, 0, new Progress<double>(), CancellationToken.None);
+
+        result.Aborted.Should().BeFalse();
+        result.Failed.Should().Be(8);
+        result.Skipped.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ProbeBatchAsync_SuccessResetsTheFailureStreak()
+    {
+        // fail, fail, succeed, fail, fail — never three in a row, so the run completes.
+        var items = Enumerable.Range(1, 5)
+            .Select(i => CreateMockItem($"Movie {i}", $"/media/{i}.strm"))
+            .ToList();
+
+        var callCount = 0;
+        _mockProviderManager
+            .Setup(p => p.RefreshSingleItem(
+                It.IsAny<BaseItem>(),
+                It.IsAny<MetadataRefreshOptions>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                var current = Interlocked.Increment(ref callCount);
+                if (current == 3)
+                {
+                    return Task.FromResult(ItemUpdateType.None);
+                }
+
+                throw new System.Net.Http.HttpRequestException("Failed");
+            });
+
+        var result = await _probeService.ProbeBatchAsync(
+            items, 1, 60, 0, 3, new Progress<double>(), CancellationToken.None);
+
+        result.Aborted.Should().BeFalse();
+        result.Skipped.Should().Be(0);
+        result.Probed.Should().Be(1);
+        result.Failed.Should().Be(4);
+    }
+
+    [Fact]
+    public async Task ProbeBatchAsync_AbortedRun_StillReportsFullProgress()
+    {
+        var items = Enumerable.Range(1, 10)
+            .Select(i => CreateMockItem($"Movie {i}", $"/media/{i}.strm"))
+            .ToList();
+
+        SetupRefreshAlwaysFails();
+
+        double? lastProgress = null;
+        var progress = new Progress<double>(v => lastProgress = v);
+
+        await _probeService.ProbeBatchAsync(
+            items, 1, 60, 0, 2, progress, CancellationToken.None);
+
+        await Task.Delay(100);
+
+        lastProgress.Should().Be(100);
+    }
+
+    private void SetupRefreshAlwaysFails()
+    {
+        _mockProviderManager
+            .Setup(p => p.RefreshSingleItem(
+                It.IsAny<BaseItem>(),
+                It.IsAny<MetadataRefreshOptions>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new System.Net.Http.HttpRequestException("Provider down"));
     }
 
     [Fact]
@@ -215,7 +319,7 @@ public class ProbeServiceTests
         var progress = new Progress<double>();
 
         var result = await _probeService.ProbeBatchAsync(
-            items, 1, 60, 0, progress, CancellationToken.None);
+            items, 1, 60, 0, 0, progress, CancellationToken.None);
 
         result.Probed.Should().Be(3);
         result.Failed.Should().Be(2);
@@ -255,7 +359,7 @@ public class ProbeServiceTests
         var progress = new Progress<double>();
 
         await _probeService.ProbeBatchAsync(
-            items, 2, 60, 0, progress, CancellationToken.None);
+            items, 2, 60, 0, 0, progress, CancellationToken.None);
 
         maxConcurrent.Should().BeLessOrEqualTo(2);
     }
@@ -277,7 +381,7 @@ public class ProbeServiceTests
         var progress = new Progress<double>(v => progressValues.Add(v));
 
         await _probeService.ProbeBatchAsync(
-            items, 1, 60, 0, progress, CancellationToken.None);
+            items, 1, 60, 0, 0, progress, CancellationToken.None);
 
         // Wait for Progress<T> callbacks (they are posted to the thread pool)
         await Task.Delay(200);
@@ -303,7 +407,7 @@ public class ProbeServiceTests
         var sw = Stopwatch.StartNew();
 
         await _probeService.ProbeBatchAsync(
-            items, 1, 60, 100, progress, CancellationToken.None);
+            items, 1, 60, 100, 0, progress, CancellationToken.None);
 
         sw.Stop();
 
@@ -346,7 +450,7 @@ public class ProbeServiceTests
         try
         {
             await _probeService.ProbeBatchAsync(
-                items, 1, 60, 50, progress, cts.Token);
+                items, 1, 60, 50, 0, progress, cts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -363,7 +467,7 @@ public class ProbeServiceTests
         var progress = new Progress<double>();
 
         var result = await _probeService.ProbeBatchAsync(
-            items, 5, 60, 0, progress, CancellationToken.None);
+            items, 5, 60, 0, 0, progress, CancellationToken.None);
 
         result.Probed.Should().Be(0);
         result.Failed.Should().Be(0);

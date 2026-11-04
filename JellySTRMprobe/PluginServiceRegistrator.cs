@@ -16,6 +16,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     /// <inheritdoc />
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
+        serviceCollection.AddSingleton<FfprobeReaper>();
         serviceCollection.AddSingleton<IProbeService, ProbeService>();
         serviceCollection.AddSingleton<ITrickplayService, TrickplayService>();
         serviceCollection.AddSingleton<IScheduledTask, ProbeStrmTask>();

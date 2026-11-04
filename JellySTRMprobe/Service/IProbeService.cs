@@ -34,6 +34,7 @@ public interface IProbeService
     /// <param name="parallelism">Maximum number of concurrent probe operations.</param>
     /// <param name="timeoutSeconds">Per-item timeout in seconds.</param>
     /// <param name="cooldownMs">Cooldown in milliseconds between probes per worker.</param>
+    /// <param name="maxConsecutiveFailures">Abort the run after this many failures in a row. Zero disables the check.</param>
     /// <param name="progress">Progress reporter (0-100).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A <see cref="ProbeResult"/> with counts and failed items.</returns>
@@ -42,6 +43,7 @@ public interface IProbeService
         int parallelism,
         int timeoutSeconds,
         int cooldownMs,
+        int maxConsecutiveFailures,
         IProgress<double> progress,
         CancellationToken cancellationToken);
 

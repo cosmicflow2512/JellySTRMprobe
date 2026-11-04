@@ -146,6 +146,7 @@ public class CatchUpEntryPoint : IHostedService, IDisposable
             config.ProbeParallelism,
             config.ProbeTimeoutSeconds,
             config.ProbeCooldownMs,
+            config.ProbeMaxConsecutiveFailures,
             progress,
             token).ConfigureAwait(false);
 

@@ -32,6 +32,13 @@ public class PluginConfiguration : BasePluginConfiguration
     public int ProbeCooldownMs { get; set; } = 200;
 
     /// <summary>
+    /// Gets or sets how many probe failures in a row abort a run. Zero disables the check.
+    /// A provider that is down makes every probe time out, and each timeout leaks an ffprobe
+    /// process that Jellyfin never kills, so an unbounded run can exhaust host memory.
+    /// </summary>
+    public int ProbeMaxConsecutiveFailures { get; set; } = 5;
+
+    /// <summary>
     /// Gets or sets a value indicating whether failed STRM files should be deleted after probing.
     /// When enabled, STRM files that fail to probe (dead/unavailable streams) are removed from disk.
     /// Files are recreated on the next library sync, giving them a fresh chance nightly.
@@ -80,6 +87,7 @@ public class PluginConfiguration : BasePluginConfiguration
         ProbeTimeoutSeconds = Math.Clamp(ProbeTimeoutSeconds, 10, 300);
         ProbeCooldownMs = Math.Clamp(ProbeCooldownMs, 0, 5000);
         DeleteFailureThreshold = Math.Clamp(DeleteFailureThreshold, 1, 100);
+        ProbeMaxConsecutiveFailures = Math.Clamp(ProbeMaxConsecutiveFailures, 0, 1000);
         TrickplayMaxItemsPerRun = Math.Clamp(TrickplayMaxItemsPerRun, 0, 100000);
         TrickplayTimeoutMinutes = Math.Clamp(TrickplayTimeoutMinutes, 0, 1440);
     }

@@ -19,6 +19,16 @@ public class ProbeResult
     public int Failed { get; init; }
 
     /// <summary>
+    /// Gets the number of items that were skipped because the run was aborted early.
+    /// </summary>
+    public int Skipped { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether the run stopped early after too many consecutive failures.
+    /// </summary>
+    public bool Aborted { get; init; }
+
+    /// <summary>
     /// Gets the list of items that failed to probe.
     /// </summary>
     public IReadOnlyList<BaseItem> FailedItems { get; init; } = [];

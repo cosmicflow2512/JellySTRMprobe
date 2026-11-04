@@ -90,10 +90,13 @@ public class ProbeStrmTask : IScheduledTask, IConfigurableScheduledTask
             config.ProbeParallelism,
             config.ProbeTimeoutSeconds,
             config.ProbeCooldownMs,
+            config.ProbeMaxConsecutiveFailures,
             progress,
             cancellationToken).ConfigureAwait(false);
 
-        if (config.DeleteFailedStrms && result.FailedItems.Count > 0)
+        // An aborted run says nothing about the files themselves — the provider was down,
+        // not the STRMs. Deleting on that evidence would wipe a working library.
+        if (config.DeleteFailedStrms && result.FailedItems.Count > 0 && !result.Aborted)
         {
             var totalProbed = result.Probed + result.Failed;
             var failurePercent = (double)result.Failed / totalProbed * 100;
@@ -113,9 +116,20 @@ public class ProbeStrmTask : IScheduledTask, IConfigurableScheduledTask
             }
         }
 
-        _logger.LogInformation(
-            "STRM probe task finished: {Probed} probed, {Failed} failed",
-            result.Probed,
-            result.Failed);
+        if (result.Aborted)
+        {
+            _logger.LogWarning(
+                "STRM probe task aborted early: {Probed} probed, {Failed} failed, {Skipped} not attempted. Check that the provider is reachable, then run the task again",
+                result.Probed,
+                result.Failed,
+                result.Skipped);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "STRM probe task finished: {Probed} probed, {Failed} failed",
+                result.Probed,
+                result.Failed);
+        }
     }
 }

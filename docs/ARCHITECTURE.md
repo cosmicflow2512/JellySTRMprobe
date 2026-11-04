@@ -51,6 +51,7 @@ JellySTRMprobe/
 │   ├── Service/
 │   │   ├── IProbeService.cs                 # Probe service interface
 │   │   ├── ProbeService.cs                  # Core probing logic
+│   │   ├── FfprobeReaper.cs                 # Kills ffprobe Jellyfin leaks on cancel
 │   │   ├── ProbeResult.cs                   # Batch probe outcome
 │   │   ├── ITrickplayService.cs             # Trickplay service interface
 │   │   └── TrickplayService.cs              # Core trickplay generation logic
@@ -113,6 +114,54 @@ This triggers Jellyfin's internal ffprobe pipeline:
 3. Parses video/audio/subtitle stream info
 4. Stores MediaStreams in the database
 5. Item now shows codec, resolution, duration, audio channels in the UI
+
+### Jellyfin Leaks ffprobe on a Cancelled Probe
+
+A per-item timeout cancels the *wait*, not the process. `MediaEncoder.GetMediaInfoInternal`:
+
+```csharp
+await reader.BaseStream.CopyToAsync(memoryStream, cancellationToken).ConfigureAwait(false);
+```
+
+On cancellation this throws, the surrounding `using (ProcessWrapper)` disposes, and
+`ProcessWrapper.Dispose()` only detaches:
+
+```csharp
+Process.Exited -= OnProcessExited;
+Untrack();              // removes it from MediaEncoder's own _runningProcesses
+Process.Dispose();      // releases the .NET handle; never signals the OS process
+```
+
+The ffprobe keeps running and keeps filling its `-probesize` buffer, which defaults to 1 GB. The
+`Untrack()` makes it worse than a plain leak: the process is gone from the only list Jellyfin
+could reap it from. Ten lines above, the deserialize-failure path *does* call `StopProcess`, which
+is why this reads as an oversight rather than a decision. Verified in 12.0 through 12.4 and master.
+
+Observed consequence: a nightly run against an unreachable provider timed out on all 22 items and
+left 15 orphans holding 10.7 GB, until the kernel OOM killer took the largest process on the host.
+
+**`FfprobeReaper` cleans up after it.** Before each probe it snapshots the PIDs of ffprobe
+processes whose command line carries that item's stream URL; after a timeout it kills only the
+ones that appeared since. The snapshot is what makes this safe — an ffprobe started earlier by
+playback of the same item is never touched. The URL is the match key and must be at least 16
+characters, so a short or empty value is refused rather than matched loosely. Discovery reads
+`/proc`, so it is Linux only and a no-op elsewhere. Remove the class once upstream kills the
+process on cancellation.
+
+### The Consecutive-Failure Breaker Skips, It Does Not Cancel
+
+`ProbeBatchAsync` stops starting new items after `ProbeMaxConsecutiveFailures` failures in a row,
+but lets in-flight probes run to completion:
+
+```csharp
+if (Volatile.Read(ref aborted) == 1) { Interlocked.Increment(ref skipped); }
+else { /* probe */ }
+```
+
+Cancelling the run would be the obvious implementation and the wrong one: cancellation is exactly
+what orphans ffprobe processes, so tearing down five in-flight probes would cause the problem the
+breaker exists to prevent. An aborted run also suppresses STRM deletion — the provider being down
+says nothing about the files.
 
 ### How Jellyfin Blocks STRM Trickplay
 
@@ -379,7 +428,7 @@ at the clamped width and would never match.
 
 | Component | Version |
 |-----------|---------|
-| .NET | 9.0 |
-| Jellyfin.Controller | 10.11.0 |
-| Jellyfin.Model | 10.11.0 |
+| .NET | 10.0 |
+| Jellyfin.Controller | 12.0.0 |
+| Jellyfin.Model | 12.0.0 |
 | StyleCop.Analyzers | 1.2.0-beta.556 |
