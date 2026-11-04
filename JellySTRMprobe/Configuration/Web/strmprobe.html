@@ -75,6 +75,21 @@
                                 Delay between probe operations to prevent connection exhaustion on upstream servers.
                             </div>
                         </div>
+
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="txtProbeMaxConsecutiveFailures">
+                                Abort after consecutive failures (0 = never)
+                            </label>
+                            <input is="emby-input" type="number" id="txtProbeMaxConsecutiveFailures"
+                                   min="0" max="1000" step="1" />
+                            <div class="fieldDescription">
+                                When your provider is down every probe times out, and Jellyfin leaves the
+                                ffprobe process running on each timeout. Those orphans keep filling their
+                                probe buffer and can exhaust host memory. Stopping the run after a few
+                                failures in a row bounds the damage. Items already in flight are left to
+                                finish &mdash; cancelling them is what creates orphans in the first place.
+                            </div>
+                        </div>
                     </div>
 
                     <div class="verticalSection">

@@ -94,6 +94,7 @@ All settings are accessible from Dashboard > Plugins > JellySTRMprobe:
 | Parallelism | 5 | 1–20 | Concurrent probe operations |
 | Timeout | 60s | 10–300s | Per-item probe timeout |
 | Cooldown | 200ms | 0–5000ms | Delay between probes (prevents upstream overload) |
+| Abort after consecutive failures | 5 | 0–1000 | Stop a run after this many failures in a row (0 = never) |
 | Enable STRM trickplay | Disabled | On/Off | Makes the trickplay task available; hidden and inert while off |
 | Trickplay max items per run | 50 | 0–100000 | Cap per trickplay run; the next run continues with the remaining items (0 = unlimited) |
 | Trickplay timeout per item | 60 min | 0–1440 | Time budget per item; on expiry the item is abandoned and the run continues (0 = no limit) |
@@ -122,12 +123,12 @@ the release ZIP, and add a new entry to `manifest.json` (see
 ### Manual Installation
 
 1. Download the ZIP matching your server (see [Requirements](#requirements)) from `dist/`:
-   `JellySTRMprobe_2.0.0.0.zip` for Jellyfin 12, `JellySTRMprobe_1.6.1.0.zip` for 10.11.x
+   `JellySTRMprobe_2.1.0.0.zip` for Jellyfin 12, `JellySTRMprobe_1.7.0.0.zip` for 10.11.x
 2. Extract it into a versioned folder in your Jellyfin plugins directory so that
    `JellySTRMprobe.dll` and `meta.json` sit side by side:
    ```
-   <jellyfin-data>/plugins/JellySTRMprobe_2.0.0.0/JellySTRMprobe.dll
-   <jellyfin-data>/plugins/JellySTRMprobe_2.0.0.0/meta.json
+   <jellyfin-data>/plugins/JellySTRMprobe_2.1.0.0/JellySTRMprobe.dll
+   <jellyfin-data>/plugins/JellySTRMprobe_2.1.0.0/meta.json
    ```
    (On the official Docker image `<jellyfin-data>` is `/config`.)
 3. Restart Jellyfin
@@ -140,16 +141,18 @@ running server, so a 10.11 server never sees the Jellyfin 12 build.
 
 | Your Jellyfin | Plugin version | targetAbi | Framework |
 |---------------|----------------|-----------|-----------|
-| **12.0** and later | **2.0.0.0** | 12.0.0.0 | .NET 10 |
-| **10.11.x** | **1.6.1.0** | 10.11.0.0 | .NET 9 |
+| **12.0** and later | **2.1.0.0** | 12.0.0.0 | .NET 10 |
+| **10.11.x** | **1.7.0.0** | 10.11.0.0 | .NET 9 |
 
-Both carry identical functionality. The split exists only because Jellyfin 12 moved to .NET 10, and
-a .NET 9 assembly cannot load into a .NET 10 host.
+Both carry identical functionality and are built from one source tree — the csproj multi-targets
+`net9.0;net10.0` and picks the matching Jellyfin package per framework. Every API this plugin uses
+is the same in both lines, so there is no conditional compilation. The split exists only because a
+.NET 9 assembly cannot load into a .NET 10 host.
 
 > **Installing by hand?** Then the matrix is on you — picking the wrong build gives you a plugin
 > that either fails to load or shows up as *Malfunctioned*. Through the catalog this cannot happen.
 
-The 10.11 build stays available indefinitely, but new development happens on the Jellyfin 12 line.
+Both lines get the same fixes.
 
 ## Building from Source
 
@@ -210,6 +213,41 @@ md5sum dist/JellySTRMprobe_<version>.zip
 ## Fork Changes
 
 This is a fork of [firestaerter3/JellySTRMprobe](https://github.com/firestaerter3/JellySTRMprobe), maintained by [cosmicflow2512](https://github.com/cosmicflow2512).
+
+### v2.1.0 / v1.7.0 — Probe timeouts no longer leak ffprobe processes
+
+**What changed:** After a probe times out, `ProbeService` now finds the ffprobe process that was
+left behind and kills it (`FfprobeReaper`). A new `ProbeMaxConsecutiveFailures` setting (default 5)
+stops a run after that many failures in a row, and an aborted run never deletes STRM files.
+
+**Why:** A nightly run against an unreachable provider took down the host. All 22 items timed out,
+each timeout leaked an ffprobe process, 15 of them accumulated 10.7 GB, and the kernel OOM killer
+took the largest process on the box — an unrelated VM.
+
+The leak is a Jellyfin bug, verified in 12.0 through 12.4 and still present on master.
+`MediaEncoder.GetMediaInfoInternal` reads ffprobe's output with
+`CopyToAsync(stream, cancellationToken)`. On cancellation that throws, the surrounding
+`using (ProcessWrapper)` disposes, and `ProcessWrapper.Dispose()` only detaches:
+
+```csharp
+Process.Exited -= OnProcessExited;
+Untrack();              // removes it from MediaEncoder's own _runningProcesses
+Process.Dispose();      // releases the .NET handle; does not signal the OS process
+```
+
+So the process keeps running, keeps filling its `-probesize` buffer (1 GB by default), and is no
+longer in any list Jellyfin could reap it from. The failure path ten lines above *does* call
+`StopProcess`, which is what makes this an oversight rather than a design choice.
+
+The plugin cannot fix the server, only clean up after it. `FfprobeReaper` snapshots the matching
+ffprobe PIDs before each probe and, on timeout, kills only those that appeared since — so an
+ffprobe started earlier by playback of the same item is left alone. Matching is on the full stream
+URL, and a URL shorter than 16 characters is refused outright rather than risking a loose match.
+Linux only, since discovery reads `/proc`; a no-op elsewhere.
+
+The breaker deliberately **skips** the remaining items instead of cancelling the run. Cancelling
+in-flight probes is precisely what orphans ffprobe processes, so tearing them down would cause the
+problem it is meant to prevent.
 
 ### v2.0.0 — Jellyfin 12.0
 

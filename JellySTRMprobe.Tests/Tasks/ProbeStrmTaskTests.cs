@@ -89,6 +89,7 @@ public class ProbeStrmTaskTests
                 It.IsAny<int>(),
                 It.IsAny<int>(),
                 It.IsAny<int>(),
+                It.IsAny<int>(),
                 It.IsAny<IProgress<double>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProbeResult { Probed = 3, Failed = 0 });
@@ -102,6 +103,7 @@ public class ProbeStrmTaskTests
             It.IsAny<int>(),
             It.IsAny<int>(),
             It.IsAny<int>(),
+            It.IsAny<int>(),
             It.IsAny<IProgress<double>>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -112,6 +114,7 @@ public class ProbeStrmTaskTests
         Plugin.Instance.Configuration.ProbeParallelism = 10;
         Plugin.Instance.Configuration.ProbeTimeoutSeconds = 120;
         Plugin.Instance.Configuration.ProbeCooldownMs = 500;
+        Plugin.Instance.Configuration.ProbeMaxConsecutiveFailures = 7;
 
         var items = new List<BaseItem>
         {
@@ -128,6 +131,7 @@ public class ProbeStrmTaskTests
                 It.IsAny<int>(),
                 It.IsAny<int>(),
                 It.IsAny<int>(),
+                It.IsAny<int>(),
                 It.IsAny<IProgress<double>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ProbeResult { Probed = 1, Failed = 0 });
@@ -141,6 +145,7 @@ public class ProbeStrmTaskTests
             10,
             120,
             500,
+            7,
             It.IsAny<IProgress<double>>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }

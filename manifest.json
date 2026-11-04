@@ -8,6 +8,22 @@
         "overview": "Probe STRM files to extract media info (codec, resolution, duration, audio)",
         "versions": [
             {
+                "version": "2.1.0.0",
+                "changelog": "- Fix: a probe run could exhaust host memory. Jellyfin does not kill ffprobe when a probe is cancelled (MediaEncoder.ProcessWrapper.Dispose only detaches, and Untrack() removes the process from Jellyfin's own registry), so every per-item timeout left an ffprobe running and filling its -probesize buffer. The plugin now kills the orphan itself.\n- New setting \"Abort after consecutive failures\" (default 5, 0 = never). A provider that is down makes every probe time out; stopping the run bounds the damage.\n- An aborted run never deletes STRM files, whatever the delete-on-failure setting says.",
+                "targetAbi": "12.0.0.0",
+                "sourceUrl": "https://raw.githubusercontent.com/cosmicflow2512/JellySTRMprobe/master/dist/JellySTRMprobe_2.1.0.0.zip",
+                "checksum": "b84f3e0f8934d8f47d7bae4981574c96",
+                "timestamp": "2026-11-04T12:00:00.0000000Z"
+            },
+            {
+                "version": "1.7.0.0",
+                "changelog": "- Fix: a probe run could exhaust host memory. Jellyfin does not kill ffprobe when a probe is cancelled (MediaEncoder.ProcessWrapper.Dispose only detaches, and Untrack() removes the process from Jellyfin's own registry), so every per-item timeout left an ffprobe running and filling its -probesize buffer. The plugin now kills the orphan itself.\n- New setting \"Abort after consecutive failures\" (default 5, 0 = never). A provider that is down makes every probe time out; stopping the run bounds the damage.\n- An aborted run never deletes STRM files, whatever the delete-on-failure setting says.",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://raw.githubusercontent.com/cosmicflow2512/JellySTRMprobe/master/dist/JellySTRMprobe_1.7.0.0.zip",
+                "checksum": "3fdcd9114a7ce41ae90765072fade52d",
+                "timestamp": "2026-11-04T12:00:00.0000000Z"
+            },
+            {
                 "version": "2.0.0.0",
                 "changelog": "- Jellyfin 12.0 support. Built against Jellyfin.Controller/Model 12.0.0 and .NET 10, which Jellyfin 12 requires. No functional change - every Jellyfin API this plugin uses is byte-identical between 10.11.0 and 12.0.0.\n- Stay on 1.6.1.0 for Jellyfin 10.11.x. Both versions live in the same catalog and the server picks the one matching its targetAbi.",
                 "targetAbi": "12.0.0.0",

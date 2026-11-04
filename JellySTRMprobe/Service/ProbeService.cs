@@ -24,6 +24,7 @@ public class ProbeService : IProbeService
     private readonly IProviderManager _providerManager;
     private readonly ILibraryManager _libraryManager;
     private readonly IFileSystem _fileSystem;
+    private readonly FfprobeReaper _reaper;
     private readonly ILogger<ProbeService> _logger;
 
     private IMetadataProvider? _probeProvider;
@@ -35,16 +36,19 @@ public class ProbeService : IProbeService
     /// <param name="providerManager">Instance of the <see cref="IProviderManager"/> interface.</param>
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="fileSystem">Instance of the <see cref="IFileSystem"/> interface.</param>
+    /// <param name="reaper">Instance of the <see cref="FfprobeReaper"/> class.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{ProbeService}"/> interface.</param>
     public ProbeService(
         IProviderManager providerManager,
         ILibraryManager libraryManager,
         IFileSystem fileSystem,
+        FfprobeReaper reaper,
         ILogger<ProbeService> logger)
     {
         _providerManager = providerManager;
         _libraryManager = libraryManager;
         _fileSystem = fileSystem;
+        _reaper = reaper;
         _logger = logger;
     }
 
@@ -132,6 +136,7 @@ public class ProbeService : IProbeService
         int parallelism,
         int timeoutSeconds,
         int cooldownMs,
+        int maxConsecutiveFailures,
         IProgress<double> progress,
         CancellationToken cancellationToken)
     {
@@ -143,7 +148,10 @@ public class ProbeService : IProbeService
 
         var probed = 0;
         var failed = 0;
+        var skipped = 0;
         var processed = 0;
+        var consecutiveFailures = 0;
+        var aborted = 0;
         var failedItems = new ConcurrentBag<BaseItem>();
         var directoryService = new DirectoryService(_fileSystem);
 
@@ -156,37 +164,62 @@ public class ProbeService : IProbeService
             },
             async (item, ct) =>
             {
-                var success = await ProbeItemCoreAsync(item, timeoutSeconds, directoryService, ct).ConfigureAwait(false);
-
-                if (success)
+                // The breaker skips the remaining items rather than cancelling the run.
+                // Cancelling in-flight probes is what orphans ffprobe processes in the first
+                // place, so tearing them down here would cause the very problem this guards against.
+                if (Volatile.Read(ref aborted) == 1)
                 {
-                    Interlocked.Increment(ref probed);
+                    Interlocked.Increment(ref skipped);
                 }
                 else
                 {
-                    Interlocked.Increment(ref failed);
-                    failedItems.Add(item);
+                    var success = await ProbeItemCoreAsync(item, timeoutSeconds, directoryService, ct).ConfigureAwait(false);
+
+                    if (success)
+                    {
+                        Interlocked.Increment(ref probed);
+                        Interlocked.Exchange(ref consecutiveFailures, 0);
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref failed);
+                        failedItems.Add(item);
+
+                        var streak = Interlocked.Increment(ref consecutiveFailures);
+
+                        if (maxConsecutiveFailures > 0
+                            && streak >= maxConsecutiveFailures
+                            && Interlocked.Exchange(ref aborted, 1) == 0)
+                        {
+                            _logger.LogError(
+                                "Aborting probe run: {Streak} consecutive failures. The provider is most likely down — continuing would keep timing out and leaking ffmpeg processes",
+                                streak);
+                        }
+                    }
                 }
 
                 var current = Interlocked.Increment(ref processed);
                 progress.Report((double)current / items.Count * 100);
 
-                if (cooldownMs > 0)
+                if (cooldownMs > 0 && Volatile.Read(ref aborted) == 0)
                 {
                     await Task.Delay(cooldownMs, ct).ConfigureAwait(false);
                 }
             }).ConfigureAwait(false);
 
         _logger.LogInformation(
-            "Probe complete: {Probed} succeeded, {Failed} failed out of {Total}",
+            "Probe complete: {Probed} succeeded, {Failed} failed, {Skipped} skipped out of {Total}",
             probed,
             failed,
+            skipped,
             items.Count);
 
         return new ProbeResult
         {
             Probed = probed,
             Failed = failed,
+            Skipped = skipped,
+            Aborted = aborted == 1,
             FailedItems = failedItems.ToArray(),
         };
     }
@@ -230,6 +263,11 @@ public class ProbeService : IProbeService
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
+        // Jellyfin does not kill ffprobe when a probe is cancelled (see FfprobeReaper).
+        // Snapshot the matching processes now so only ones this probe spawned get reaped.
+        var streamUrl = (item as Video)?.ShortcutPath;
+        var probesBefore = _reaper.FindProbes(streamUrl);
+
         try
         {
             var refreshOptions = new MetadataRefreshOptions(directoryService)
@@ -258,15 +296,23 @@ public class ProbeService : IProbeService
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning("Probe timed out for {ItemName} ({ItemId}) after {Timeout}s", item.Name, item.Id, timeoutSeconds);
+            var reaped = _reaper.ReapNew(streamUrl, probesBefore);
+            _logger.LogWarning(
+                "Probe timed out for {ItemName} ({ItemId}) after {Timeout}s, reaped {Reaped} orphaned ffprobe process(es)",
+                item.Name,
+                item.Id,
+                timeoutSeconds,
+                reaped);
             return false;
         }
         catch (OperationCanceledException)
         {
+            _reaper.ReapNew(streamUrl, probesBefore);
             throw;
         }
         catch (Exception ex)
         {
+            _reaper.ReapNew(streamUrl, probesBefore);
             _logger.LogWarning(ex, "Probe failed for {ItemName} ({ItemId})", item.Name, item.Id);
             return false;
         }

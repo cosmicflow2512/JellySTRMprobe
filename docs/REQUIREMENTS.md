@@ -45,6 +45,9 @@ if (!item.IsShortcut || options.EnableRemoteContentProbe)
 | FR-1.7 | The task SHALL default to running daily at 4:00 AM |
 | FR-1.8 | The task SHALL be cancellable via the Dashboard |
 | FR-1.9 | The task SHALL log the count of probed, failed, and skipped items |
+| FR-1.10 | After a probe times out the plugin SHALL kill the ffprobe process Jellyfin leaves running, matching on the full stream URL and sparing processes that existed beforehand |
+| FR-1.11 | The task SHALL abort after a configurable number of consecutive failures, skipping the remaining items rather than cancelling the ones in flight |
+| FR-1.12 | An aborted run SHALL NOT delete STRM files regardless of the delete-on-failure setting |
 
 ### FR-1b: Scheduled Trickplay Task
 
@@ -98,6 +101,7 @@ in `RefreshTrickplayDataAsync()`. The library option *Extract trickplay images* 
 | FR-3.8 | Configurable: Trickplay maximum items per run 0-100000 (default: 50, 0 = unlimited) |
 | FR-3.9 | Configurable: Enable STRM trickplay on/off (default: off) |
 | FR-3.10 | Configurable: Trickplay timeout per item 0-1440 minutes (default: 60, 0 = no limit) |
+| FR-3.11 | Configurable: Abort after consecutive probe failures 0-1000 (default: 5, 0 = never) |
 | FR-3.7 | The configuration UI SHALL display a library multi-selector populated from Jellyfin's virtual folders |
 
 ### FR-4: Metadata Preservation
@@ -123,7 +127,8 @@ in `RefreshTrickplayDataAsync()`. The library option *Extract trickplay images* 
 
 | ID | Requirement |
 |----|-------------|
-| NFR-2.1 | Individual probe failures SHALL NOT stop the overall batch |
+| NFR-2.1 | Individual probe failures SHALL NOT stop the overall batch, up to the consecutive-failure limit |
+| NFR-2.5 | A probe run SHALL NOT be able to exhaust host memory through leaked ffmpeg processes |
 | NFR-2.2 | Timeout per probe SHALL prevent hanging on unresponsive remote streams |
 | NFR-2.3 | Failed items SHALL remain unprobed and be retried on the next scheduled task run |
 | NFR-2.4 | The plugin SHALL handle Jellyfin restarts gracefully (catch-up re-subscribes on startup) |
@@ -132,8 +137,8 @@ in `RefreshTrickplayDataAsync()`. The library option *Extract trickplay images* 
 
 | ID | Requirement |
 |----|-------------|
-| NFR-3.1 | Target: .NET 10.0 (Jellyfin 12 requires it) |
-| NFR-3.2 | Target: Jellyfin 12.0+. The 1.6.1.0 build on .NET 9 remains published for 10.11.x |
+| NFR-3.1 | Target: multi-targeted net9.0 (Jellyfin 10.11.x) and net10.0 (Jellyfin 12.x) from one source tree |
+| NFR-3.2 | Both lines SHALL receive the same fixes, published as 1.x and 2.x |
 | NFR-3.2a | Both builds SHALL stay in the same catalog; `InstallationManager` drops entries whose `targetAbi` exceeds the server version, so no manual choice is required |
 | NFR-3.3 | The plugin SHALL work alongside other Jellyfin plugins without conflicts |
 | NFR-3.4 | The plugin SHALL work with any STRM URL format (HTTP, HTTPS, local file paths) |

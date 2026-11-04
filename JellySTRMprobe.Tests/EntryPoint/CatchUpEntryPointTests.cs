@@ -50,10 +50,11 @@ public class CatchUpEntryPointTests
                 It.IsAny<int>(),
                 It.IsAny<int>(),
                 It.IsAny<int>(),
+                It.IsAny<int>(),
                 It.IsAny<IProgress<double>>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<IReadOnlyList<BaseItem>, int, int, int, IProgress<double>, CancellationToken>(
-                (items, _, _, _, _, _) => probed.TrySetResult(items))
+            .Callback<IReadOnlyList<BaseItem>, int, int, int, int, IProgress<double>, CancellationToken>(
+                (items, _, _, _, _, _, _) => probed.TrySetResult(items))
             .ReturnsAsync(new ProbeResult());
 
         var entryPoint = CreateEntryPoint();
@@ -109,6 +110,7 @@ public class CatchUpEntryPointTests
             It.IsAny<int>(),
             It.IsAny<int>(),
             It.IsAny<int>(),
+            It.IsAny<int>(),
             It.IsAny<IProgress<double>>(),
             It.IsAny<CancellationToken>()), Times.Never);
 
@@ -132,6 +134,7 @@ public class CatchUpEntryPointTests
 
         _mockProbeService.Verify(s => s.ProbeBatchAsync(
             It.IsAny<IReadOnlyList<BaseItem>>(),
+            It.IsAny<int>(),
             It.IsAny<int>(),
             It.IsAny<int>(),
             It.IsAny<int>(),
@@ -203,6 +206,7 @@ public class CatchUpEntryPointTests
         probed.Task.IsCompleted.Should().BeFalse();
         _mockProbeService.Verify(s => s.ProbeBatchAsync(
             It.IsAny<IReadOnlyList<BaseItem>>(),
+            It.IsAny<int>(),
             It.IsAny<int>(),
             It.IsAny<int>(),
             It.IsAny<int>(),

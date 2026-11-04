@@ -15,10 +15,21 @@ public class PluginConfigurationTests
         config.ProbeParallelism.Should().Be(5);
         config.ProbeTimeoutSeconds.Should().Be(60);
         config.ProbeCooldownMs.Should().Be(200);
+        config.ProbeMaxConsecutiveFailures.Should().Be(5);
         config.SelectedLibraryIds.Should().BeEmpty();
         config.EnableStrmTrickplay.Should().BeFalse();
         config.TrickplayMaxItemsPerRun.Should().Be(50);
         config.TrickplayTimeoutMinutes.Should().Be(60);
+    }
+
+    [Fact]
+    public void Validate_ClampsProbeMaxConsecutiveFailures_WhenNegative()
+    {
+        var config = new PluginConfiguration { ProbeMaxConsecutiveFailures = -5 };
+
+        config.Validate();
+
+        config.ProbeMaxConsecutiveFailures.Should().Be(0);
     }
 
     [Fact]
